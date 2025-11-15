@@ -1,4 +1,6 @@
 ## Files
+*`closestTriangulation.py`
+  * It caluculates the tringilation that the closest to all other tringilations using `distance` and the overall ditance
 
 * `distance.py`
 
