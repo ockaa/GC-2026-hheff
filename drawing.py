@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import math
 from cgshop2026_pyutils.geometry import FlippableTriangulation, draw_flips, Point, draw_edges
-from distance import distance
+
 # # --- 1. Setup Initial Triangulation ---
 # points = [((0,2)), (0,0), (5,0), (5,2), (4,1), (1,1)]
 # points_ = [Point(x, y) for x, y in points]
@@ -10,11 +10,11 @@ from distance import distance
 
 # a: FlippableTriangulation = FlippableTriangulation.from_points_edges(points_, triang_1)
 # b: FlippableTriangulation = FlippableTriangulation.from_points_edges(points_, triang_2)
-def Draw_distance(a: FlippableTriangulation,
-                  b: FlippableTriangulation):
+def Draw_distance(dist: int,
+                  stages_of_flips: list[list[tuple[int, int]]],
+                  a: FlippableTriangulation,
+                  b: FlippableTriangulation ):
 
-    # get dist
-    dist,stages_of_flips = distance(a.fork(),b.fork())
     print(f"the distance is: {dist}")
 
 
