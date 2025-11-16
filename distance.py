@@ -14,29 +14,28 @@ def distance(
     lista = a.get_edges()
     listb = b.get_edges()
     set_b = set(listb)
-    a_working = a.fork()
     setChangedEdges = set(diff(lista, listb))
-    while a_working!=b:
+    while a!=b:
         setFlips = set()
         amount = 0
         for u, v in set(setChangedEdges): #we flip all edges that are final in b
             try:
-                flipped_edge = a_working.get_flip_partner((u, v))
+                flipped_edge = a.get_flip_partner((u, v))
                 flipped_edge_reverse = (flipped_edge[1], flipped_edge[0])
                 if flipped_edge in set_b or flipped_edge_reverse in set_b:
-                    a_working.add_flip((u, v))
+                    a.add_flip((u, v))
                     setChangedEdges.remove((u, v))
                     setFlips.add((u,v))
             except ValueError:
                 continue
-        setflipable = set(a_working.possible_flips())
+        setflipable = set(a.possible_flips())
         for u,v in set(setChangedEdges): #flip some edges (that can be fliped) in some way
             try:
                 if Huristic(a,b,u,v):
-                    a_working.add_flip((u,v))
+                    a.add_flip((u,v))
                     #remove the edge we flipped from out list an add the fliped edge
                     setChangedEdges.remove((u,v))
-                    setChangedEdges.add((a_working.get_flip_partner((u,v))))
+                    setChangedEdges.add((a.get_flip_partner((u,v))))
                     #update the flipable edges
                     setflipable = set(a.possible_flips())
                     setFlips.add((u,v))
@@ -45,7 +44,7 @@ def distance(
                 continue
         
         
-        a_working.commit() # we commite the flips in the end
+        a.commit() # we commite the flips in the end
         flips_by_layer.append(setFlips)
         dist+=1
 
