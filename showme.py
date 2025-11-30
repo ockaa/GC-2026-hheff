@@ -3,14 +3,14 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from drawing2 import Draw_distance
 from closestTriangulation import closestTringulation
-from distance import distance
+from distance2 import distance
 from cgshop2026_pyutils.io import read_instance
 from cgshop2026_pyutils.geometry import FlippableTriangulation, draw_edges, Point 
 from cgshop2026_pyutils.schemas import CGSHOP2026Instance
 
 
 INSTANCE_FOLDER = "benchmark_instances"
-INSTANCE_FILENAME = "random_instance_4_40_2.json" 
+INSTANCE_FILENAME = "random_instance_337_40_2.json" 
 
 def main():
     # 1. Locate and Load the Instance
@@ -51,7 +51,7 @@ def main():
             b = FlippableTriangulation.from_points_edges(points_list, instance.triangulations[j])
 
 
-            dist, stages_of_flips = distance(a, b)
+            dist, stages_of_flips,stages_partnered_of_flips  = distance(a, b)
             Draw_distance(dist, stages_of_flips, a, b,points_list)
 
 
