@@ -1,0 +1,603 @@
+import networkx as nx
+from itertools import combinations
+from collections import defaultdict, deque
+from cgshop2026_pyutils.io import read_instance
+from cgshop2026_pyutils.geometry import FlippableTriangulation, draw_edges, Point 
+from cgshop2026_pyutils.schemas import CGSHOP2026Instance
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
+def normalize_edge(u, v):
+    """Return the edge in a canonical form (smallest vertex first)."""
+    return (min(u, v), max(u, v))
+
+class DSU:
+    def __init__(self):
+        self.parent = {}
+
+    def find(self, x):
+        if x not in self.parent:
+            self.parent[x] = x
+        if self.parent[x] != x:
+            self.parent[x] = self.find(self.parent[x])
+        return self.parent[x]
+
+    def union(self, x, y):
+        px = self.find(x)
+        py = self.find(y)
+        if px != py:
+            self.parent[py] = px
+
+    def add(self, x):
+        if x not in self.parent:
+            self.parent[x] = x
+
+
+def build_flip_components(layers, a: FlippableTriangulation, max_subset_size=5):
+    """
+    בונה קומפוננטות flips עם תלות ביניהן.
+    
+    Args:
+        layers: list של sets של tuples (edge, flip_partner)
+        a: טרינגולציה התחלתית (FlippableTriangulation)
+        max_subset_size: גודל מקסימלי של subset לבדיקה
+    
+    Returns:
+        dsu: DSU structure with connected components
+        comp_info: dict with info about each node
+        Trings: list of triangulations after each layer
+    """
+    dsu = DSU()
+    comp_info = {}
+    Trings = [a]  # Trings[0] = טרינגולציה מקורית, Trings[i] = אחרי שכבה i-1
+    
+    all_executed_flips = []  # all_executed_flips[i] = flips בשכבה i
+
+    # עיבוד כל שכבה
+    for layer_idx, current_layer in enumerate(layers):
+        print(f"\n{'='*60}")
+        print(f"Processing Layer {layer_idx}")
+        print(f"{'='*60}")
+        
+        # התחלה מהטרינגולציה אחרי השכבה הקודמת
+        a_current = Trings[-1].fork()
+        current_layer_flips = []
+        
+        # רשימת הצלעות מהשכבה הקודמת בלבד (לא מכל ההיסטוריה)
+        prev_layer_edges = all_executed_flips[-1] if layer_idx > 0 else []
+
+        for edge, e_flip in current_layer:
+            edge = normalize_edge(*edge)
+            e_flip = normalize_edge(*e_flip)
+            node = (edge, layer_idx)
+            dsu.add(node)
+            
+            print(f"\n--- Edge {edge} ---")
+            
+            # 🔴 בדיקה 1: האם זה independent flip מהטרינגולציה המקורית?
+            if edge in a.possible_flips() and normalize_edge(*a.get_flip_partner(edge)) == e_flip:
+                comp_info[node] = {"edge": edge, "layer": layer_idx, "enabled": set()}
+                print(f"✓ Independent flip from base triangulation")
+                try:
+                    a_current.add_flip(edge)
+                    current_layer_flips.append(edge)
+                except ValueError as e:
+                    print(f"✗ Failed: {e}")
+                continue
+            
+            # 🔴 בדיקה 2: חיפוש subset מינימלי מהשכבה הקודמת
+            if layer_idx == 0:
+                # שכבה ראשונה - אין תלויות
+                comp_info[node] = {"edge": edge, "layer": layer_idx, "enabled": set()}
+                print(f"✓ Layer 0 - no dependencies")
+                try:
+                    a_current.add_flip(edge)
+                    current_layer_flips.append(edge)
+                except ValueError as e:
+                    print(f"✗ Failed: {e}")
+                continue
+            
+            # חיפוש subset מינימלי
+            found_dependency_set = set()
+            found = False
+            
+            print(f"Searching for minimal subset from prev layer ({len(prev_layer_edges)} edges)...")
+            
+            # 🔴 מפתח: מתחילים מהטרינגולציה לפני השכבה הקודמת!
+            base_for_search = Trings[-2].fork() if layer_idx > 1 else a.fork()
+            
+            for size in range(1, min(len(prev_layer_edges) + 1, max_subset_size + 1)):
+                if found:
+                    break
+                
+                tested = 0
+                for subset in combinations(prev_layer_edges, size):
+                    tested += 1
+                    a_dup = base_for_search.fork()
+                    try:
+                        for prev_edge in subset:
+                            a_dup.add_flip(prev_edge)
+                        a_dup.commit()
+                        
+                        if edge in a_dup.possible_flips() and normalize_edge(*a_dup.get_flip_partner(edge)) == e_flip:
+                            found_dependency_set = set(subset)
+                            found = True
+                            print(f"✓ Found minimal subset of size {size}: {subset}")
+                            break
+                    except ValueError:
+                        continue
+                
+                if tested > 0 and not found:
+                    print(f"  Tested {tested} subsets of size {size} - none worked")
+
+            # שמירת מידע
+            comp_info[node] = {"edge": edge, "layer": layer_idx, "enabled": found_dependency_set}
+            
+            if not found:
+                print(f"⚠ No enabling subset found (may need larger max_subset_size)")
+            
+            # יוניון עם הפליפים שנמצאו
+            for dep_edge in found_dependency_set:
+                dep_node = (dep_edge, layer_idx - 1)
+                dsu.add(dep_node)
+                dsu.union(node, dep_node)
+
+            # הוספה לטרינגולציה
+            try:
+                a_current.add_flip(edge)
+                current_layer_flips.append(edge)
+                print(f"✓ Flip added successfully")
+            except ValueError as e:
+                print(f"✗ Failed to add flip: {e}")
+
+        a_current.commit()
+        Trings.append(a_current)
+        all_executed_flips.append(current_layer_flips)
+        
+        print(f"\n✓ Layer {layer_idx} completed: {len(current_layer_flips)}/{len(current_layer)} flips succeeded")
+        
+        # 🔴 אזהרה אם לא הצלחנו להוסיף אף flip בשכבה
+        if len(current_layer_flips) == 0:
+            print(f"⚠️ WARNING: No flips succeeded in layer {layer_idx}!")
+            print(f"   This layer will not appear in the dependency graph.")
+            print(f"   Edges attempted: {[normalize_edge(*e[0]) for e in current_layer]}")
+
+    return dsu, comp_info, Trings
+
+
+def visualize_flip_components(comp_info, show_all=True):
+    """
+    מצייר DAG של קומפוננטות flips עם layout היררכי ברור.
+    comp_info: dict[node] = {"edge":..., "layer":..., "enabled": set()}
+    show_all: אם False, מראה רק nodes עם תלויות
+    """
+    G = nx.DiGraph()
+
+    # יוצרים nodes עם תוויות
+    for node, info in comp_info.items():
+        edge = info["edge"]
+        layer = info["layer"]
+        G.add_node(node, label=f"{edge}\nL{layer}", layer=layer)
+
+    # יוצרים edges לפי "enabled"
+    edge_list = []
+    for node, info in comp_info.items():
+        for dep_flip in info["enabled"]:
+            dep_node = None
+            for n, n_info in comp_info.items():
+                if n_info["edge"] == dep_flip and n_info["layer"] == info["layer"] - 1:
+                    dep_node = n
+                    break
+            if dep_node:
+                G.add_edge(dep_node, node)
+                edge_list.append((dep_node, node))
+    
+    # אם show_all=False, מראה רק nodes שיש להם edges
+    if not show_all:
+        connected_nodes = set()
+        for u, v in edge_list:
+            connected_nodes.add(u)
+            connected_nodes.add(v)
+        G = G.subgraph(connected_nodes).copy()
+    
+    if len(G.nodes()) == 0:
+        print("No dependencies found in the graph!")
+        return
+
+    # ארגון לפי שכבות
+    layers_dict = {}
+    for node in G.nodes():
+        layer = G.nodes[node]['layer']
+        if layer not in layers_dict:
+            layers_dict[layer] = []
+        layers_dict[layer].append(node)
+    
+    # מיון כל שכבה לפי שם הצלע (לעקביות)
+    for layer in layers_dict:
+        layers_dict[layer].sort(key=lambda n: G.nodes[n]['label'])
+    
+    # יצירת pos - כל שכבה בעמודה נפרדת, פיזור רחב יותר
+    pos = {}
+    max_layer = max(layers_dict.keys()) if layers_dict else 0
+    
+    for layer, nodes in sorted(layers_dict.items()):
+        x = layer * 4  # ריווח גדול יותר בין שכבות
+        num_nodes = len(nodes)
+        
+        # פיזור אנכי עם ריווח דינמי
+        height_per_node = max(2.0, 20.0 / max(num_nodes, 1))
+        
+        for i, node in enumerate(nodes):
+            y = (i - (num_nodes - 1) / 2) * height_per_node
+            pos[node] = (x, y)
+
+    # ציור
+    fig_width = max(14, (max_layer + 1) * 4)
+    fig_height = max(10, max(len(nodes) for nodes in layers_dict.values()) * 0.8)
+    
+    plt.figure(figsize=(fig_width, fig_height))
+    
+    # צביעת nodes לפי שכבה
+    node_colors = []
+    for node in G.nodes():
+        layer = G.nodes[node]['layer']
+        # גרדיאנט צבעים לפי שכבה
+        color_intensity = 0.3 + (layer / (max_layer + 1)) * 0.5
+        node_colors.append((0.6, 0.8, 1.0, color_intensity))
+    
+    # nodes
+    nx.draw_networkx_nodes(G, pos, node_size=1200, node_color=node_colors, 
+                          edgecolors='black', linewidths=2)
+    
+    # edges
+    nx.draw_networkx_edges(G, pos, arrowstyle="->", arrowsize=20, 
+                          width=2, edge_color="#D32F2F", alpha=0.7,
+                          connectionstyle="arc3,rad=0.1")
+    
+    # labels
+    labels = nx.get_node_attributes(G, 'label')
+    nx.draw_networkx_labels(G, pos, labels, font_size=9, font_weight='bold')
+    
+    # הוספת קווים אנכיים להפרדה בין שכבות
+    for layer in range(max_layer + 1):
+        x = layer * 4
+        plt.axvline(x=x, color='gray', linestyle='--', alpha=0.3, linewidth=0.5)
+        plt.text(x, plt.ylim()[1] * 0.95, f"Layer {layer}", 
+                ha='center', fontsize=12, fontweight='bold', color='#333')
+
+    plt.title("Flip Components Dependency DAG", fontsize=18, fontweight='bold', pad=20)
+    plt.axis("off")
+    plt.tight_layout()
+    plt.show()
+    
+    # סטטיסטיקות
+    print(f"\n📊 Graph Statistics:")
+    print(f"   Total nodes: {len(G.nodes())}")
+    print(f"   Total edges: {len(G.edges())}")
+    print(f"   Layers: {max_layer + 1}")
+    for layer, nodes in sorted(layers_dict.items()):
+        in_subgraph = [n for n in nodes if n in G.nodes()]
+        print(f"   Layer {layer}: {len(in_subgraph)} nodes")
+import networkx as nx
+import matplotlib.pyplot as plt
+import random
+import networkx as nx
+import matplotlib.pyplot as plt
+
+import networkx as nx
+import matplotlib.pyplot as plt
+
+def visualize_components(dsu, comp_info, Trings, final_edges=None, stages_of_flips_with_partner=None, show_all=True):
+    """
+    ציור גרף של flip-components עם הדגשת צלעות שהופכו לצלעות סופיות.
+
+    dsu: ה-DSU שלך (עם find)
+    comp_info: dict mapping node -> {"edge":..., "layer":..., "enabled": set(...) }
+    Trings: רשימה של triangulations (אפשר לשמש לשכבות/pos)
+    final_edges: set של צלעות סופיות (tuples), אם רוצים להדגיש
+    stages_of_flips_with_partner: אופציונלי, אם רוצים להוסיף קשתות לפי זוגות מתוך המקור
+    show_all: אם False, מציג רק nodes שיש להם edges
+    """
+
+    G = nx.DiGraph()
+
+    # 1) Nodes
+    all_nodes = list(comp_info.keys())
+    G.add_nodes_from(all_nodes)
+
+    # 2) Edges
+    for node, info in comp_info.items():
+        for dep in info.get("enabled", set()):
+            dep_node = None
+            target_layer = info["layer"] - 1
+            for cand in comp_info.keys():
+                if comp_info[cand]["edge"] == dep and comp_info[cand]["layer"] == target_layer:
+                    dep_node = cand
+                    break
+            if dep_node:
+                G.add_edge(dep_node, node)
+
+    # קשתות משותפות
+    if stages_of_flips_with_partner is not None:
+        for layer_idx, flips in enumerate(stages_of_flips_with_partner):
+            for edge, partner in flips:
+                n1 = (tuple(sorted(edge)), layer_idx)
+                n2 = (tuple(sorted(partner)), layer_idx)
+                if n1 in G.nodes() and n2 in G.nodes():
+                    G.add_edge(n1, n2)
+
+    # show_all=False -> שמור רק nodes עם edges
+    if not show_all:
+        connected_nodes = set()
+        for u, v in G.edges():
+            connected_nodes.add(u); connected_nodes.add(v)
+        G = G.subgraph(connected_nodes).copy()
+        if len(G.nodes()) == 0:
+            print("No dependencies to show after filtering (show_all=False).")
+            return
+
+    # 3) Colors per component
+    reps = set(dsu.find(node) for node in comp_info.keys())
+    comp_colors = {}
+    palette = list(plt.cm.tab10.colors) + list(plt.cm.Pastel1.colors)
+    for i, rep in enumerate(sorted(reps, key=lambda x: str(x))):
+        comp_colors[rep] = palette[i % len(palette)]
+
+    default_color = (0.85, 0.85, 0.85)
+    node_colors = [comp_colors.get(dsu.find(node), default_color) for node in G.nodes()]
+
+    # 4) Positions לפי שכבות
+    layers_dict = {}
+    for node in G.nodes():
+        layer = comp_info[node]["layer"]
+        layers_dict.setdefault(layer, []).append(node)
+
+    for layer in layers_dict:
+        layers_dict[layer].sort(key=lambda n: str(comp_info[n]["edge"]))
+
+    max_layer = max(layers_dict.keys()) if layers_dict else 0
+    pos = {}
+    for layer, nodes in sorted(layers_dict.items()):
+        x = layer * 4
+        num_nodes = len(nodes)
+        height_per_node = max(0.6, 8.0 / max(num_nodes, 1))
+        for i, node in enumerate(nodes):
+            y = (i - (num_nodes - 1) / 2) * height_per_node
+            pos[node] = (x, y)
+
+    # 5) ציור
+    plt.figure(figsize=(max(12, (max_layer+1)*3), max(6, len(G.nodes())*0.08 + 2)))
+
+    # Edges
+    nx.draw_networkx_edges(G, pos, arrowstyle='->', arrowsize=10,
+                           edge_color='#D32F2F', width=1,
+                           connectionstyle="arc3,rad=0.08")
+
+    # Nodes – נבדל בין nodes רגילים ל-final edges
+    shapes = {}
+    if final_edges is not None:
+        final_edges_set = {tuple(sorted(e)) for e in final_edges}
+    else:
+        final_edges_set = set()
+
+    for node in G.nodes():
+        edge = comp_info[node]["edge"]
+        if tuple(sorted(edge)) in final_edges_set:
+            shapes[node] = '*'   # כוכב
+        else:
+            shapes[node] = 'o'   # עיגול רגיל
+
+    unique_shapes = set(shapes.values())
+    for shape in unique_shapes:
+        nodes_of_shape = [n for n in G.nodes() if shapes[n] == shape]
+        colors_of_nodes = [node_colors[list(G.nodes()).index(n)] for n in nodes_of_shape]
+        # צבע צהוב עבור כוכבים
+        if shape == '*':
+            colors_of_nodes = ['gold'] * len(nodes_of_shape)
+        nx.draw_networkx_nodes(G, pos,
+                               nodelist=nodes_of_shape,
+                               node_color=colors_of_nodes,
+                               node_size=300,
+                               edgecolors='black',
+                               linewidths=0.8,
+                               node_shape=shape)
+
+    # Labels – compact mode
+    labels = {n: f"{comp_info[n]['edge']}\nL{comp_info[n]['layer']}" for n in G.nodes()}
+    if len(G.nodes()) <= 50:
+        nx.draw_networkx_labels(G, pos, labels, font_size=6, font_weight='bold')
+
+    # קווי שכבות
+    for layer in range(max_layer+1):
+        x = layer * 4
+        plt.axvline(x=x, color='gray', linestyle='--', alpha=0.25, linewidth=0.6)
+        plt.text(x, plt.ylim()[1]*0.95 if plt.ylim()[1] != 0 else 0.9, f"Layer {layer}",
+                 ha='center', fontsize=10, fontweight='bold')
+
+    plt.title("Flip Components (nodes colored by DSU component)", fontsize=14)
+    plt.axis('off')
+    plt.tight_layout()
+    plt.show()
+
+    # stats
+    print(f"\n📊 Graph Statistics:")
+    print(f"   Total nodes: {len(G.nodes())}")
+    print(f"   Total edges: {len(G.edges())}")
+    print(f"   Layers: {max_layer + 1}")
+    for layer in sorted(layers_dict.keys()):
+        print(f"   Layer {layer}: {len(layers_dict[layer])} nodes")
+
+def optimize_flip_sequence(comp_info, original_layers):
+    """
+    מקבל גרף תלויות של flips ומסדר אותם מחדש לפי:
+    1. זיהוי קומפוננטות בלתי תלויות (באמצעות DSU)
+    2. מיון טופולוגי בתוך כל קומפוננטה
+    3. התחלה מוקדמת של קומפוננטות שהתחילו מאוחר
+    
+    Args:
+        comp_info: dict עם מידע על כל node - {"edge": edge, "layer": layer, "enabled": set_of_dependencies}
+        original_layers: list של sets של tuples (edge, flip_partner) המקורי
+        
+    Returns:
+        optimized_distance: מספר השכבות החדש
+        optimized_flips_by_layer: list של sets של edges (format כמו distance)
+        optimized_flips_with_partner_by_layer: list של sets של (edge, partner) (format כמו distance)
+    """
+    print("\n" + "="*60)
+    print("OPTIMIZING FLIP SEQUENCE")
+    print("="*60)
+    
+    if not comp_info:
+        print("WARNING: comp_info is empty! Returning original sequence.")
+        flips_by_layer = [set(e for e, _ in layer) for layer in original_layers]
+        return len(original_layers), flips_by_layer, original_layers
+    
+    # 🔴 שלב 1: בניית DSU למציאת קומפוננטות בלתי תלויות
+    dsu = DSU()
+    for node, info in comp_info.items():
+        dsu.add(node)
+        for dep_edge in info["enabled"]:
+            dep_node = (dep_edge, info["layer"] - 1)
+            if dep_node in comp_info:
+                dsu.add(dep_node)
+                dsu.union(node, dep_node)
+    
+    # איסוף קומפוננטות
+    components = defaultdict(list)
+    for node in comp_info.keys():
+        rep = dsu.find(node)
+        components[rep].append(node)
+    
+    print(f"Found {len(components)} independent components")
+    
+    # 🔴 שלב 2: לכל קומפוננטה, מצא את השכבה המינימלית שלה
+    component_min_layer = {}
+    for rep, nodes in components.items():
+        min_layer = min(comp_info[node]["layer"] for node in nodes)
+        component_min_layer[rep] = min_layer
+        print(f"Component {rep[:2]}... starts at layer {min_layer}, has {len(nodes)} nodes")
+    
+    # 🔴 שלב 3: מיון טופולוגי לכל קומפוננטה בנפרד
+    component_sequences = {}  # rep -> list of layers של הקומפוננטה
+    
+    for rep, nodes in components.items():
+        # בניית גרף תלויות רק בתוך הקומפוננטה
+        graph = defaultdict(list)
+        in_degree = defaultdict(int)
+        
+        for node in nodes:
+            info = comp_info[node]
+            in_degree[node] = len(info["enabled"])
+            
+            for dep_edge in info["enabled"]:
+                dep_node = (dep_edge, info["layer"] - 1)
+                if dep_node in nodes:  # רק תלויות בתוך הקומפוננטה
+                    graph[dep_node].append(node)
+        
+        # Topological sort
+        ready_queue = deque([n for n in nodes if in_degree[n] == 0])
+        layers = []
+        
+        while ready_queue:
+            current_layer = []
+            batch_size = len(ready_queue)
+            
+            for _ in range(batch_size):
+                node = ready_queue.popleft()
+                current_layer.append(node)
+                
+                for dependent in graph[node]:
+                    in_degree[dependent] -= 1
+                    if in_degree[dependent] == 0:
+                        ready_queue.append(dependent)
+            
+            if current_layer:
+                layers.append(current_layer)
+        
+        component_sequences[rep] = layers
+        print(f"  Component needs {len(layers)} sequential layers")
+    
+    # 🔴 שלב 4: שילוב הקומפוננטות - כל קומפוננטה מתחילה מוקדם ככל האפשר
+    # נמצא את המקסימום של אורכי הקומפוננטות
+    max_component_length = max(len(seq) for seq in component_sequences.values())
+    
+    # נצור שכבות חדשות
+    optimized_layers = [[] for _ in range(max_component_length)]
+    
+    # נוסיף כל קומפוננטה החל מההתחלה (שכבה 0)
+    for rep, sequence in component_sequences.items():
+        for relative_layer, nodes in enumerate(sequence):
+            optimized_layers[relative_layer].extend(nodes)
+    
+    # 🔴 שלב 5: המרה לפורמט הנכון עם flip partners
+    flips_by_layer = []
+    flips_with_partner_by_layer = []
+    
+    for layer_nodes in optimized_layers:
+        if not layer_nodes:
+            continue
+            
+        layer_flips = set()
+        layer_with_partner = set()
+        
+        for node in layer_nodes:
+            edge, original_layer = node
+            
+            # מציאת ה-flip_partner המקורי
+            flip_partner = None
+            for item in original_layers[original_layer]:
+                orig_edge, orig_partner = item
+                if orig_edge == edge:
+                    flip_partner = orig_partner
+                    break
+            
+            if flip_partner:
+                layer_flips.add(edge)
+                layer_with_partner.add((edge, flip_partner))
+        
+        flips_by_layer.append(layer_flips)
+        flips_with_partner_by_layer.append(layer_with_partner)
+    
+    # סטטיסטיקות
+    total_original = sum(len(layer) for layer in original_layers)
+    total_optimized = sum(len(layer) for layer in flips_by_layer)
+    
+    print(f"\n{'='*60}")
+    print(f"OPTIMIZATION RESULTS:")
+    print(f"Original layers: {len(original_layers)}")
+    print(f"Optimized layers: {len(flips_by_layer)}")
+    print(f"Improvement: {len(original_layers) - len(flips_by_layer)} layers saved!")
+    print(f"Flips processed: {total_optimized}/{total_original}")
+    print(f"Independent components: {len(components)}")
+    print(f"{'='*60}\n")
+    
+    return len(flips_by_layer), flips_by_layer, flips_with_partner_by_layer
+
+
+# 🔴 אם Draw_distance עדיין לא עובד, הנה wrapper שמתקן את הפורמט:
+def optimize_and_fix_format(comp_info, original_layers):
+    """
+    Wrapper שמוודא שהפורמט תואם למה ש-Draw_distance מצפה
+    """
+    dist, flips_by_layer, flips_with_partner = optimize_flip_sequence(comp_info, original_layers)
+    
+    # וידוא שהפורמט נכון - כל שכבה היא set של tuples
+    fixed_flips = []
+    fixed_with_partner = []
+    
+    for layer_flips, layer_with_partner in zip(flips_by_layer, flips_with_partner):
+        # המרה ל-set אם צריך
+        if not isinstance(layer_flips, set):
+            layer_flips = set(layer_flips)
+        if not isinstance(layer_with_partner, set):
+            layer_with_partner = set(layer_with_partner)
+        
+        fixed_flips.append(layer_flips)
+        fixed_with_partner.append(layer_with_partner)
+    
+    print("\n📦 Format verification:")
+    print(f"   Type of flips_by_layer[0]: {type(fixed_flips[0]) if fixed_flips else 'empty'}")
+    print(f"   Type of flips_with_partner[0]: {type(fixed_with_partner[0]) if fixed_with_partner else 'empty'}")
+    if fixed_with_partner:
+        print(f"   Example item in layer 0: {list(fixed_with_partner[0])[:2] if fixed_with_partner[0] else 'empty layer'}")
+    
+    return dist, fixed_flips, fixed_with_partner
