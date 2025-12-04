@@ -48,14 +48,12 @@ def distance(a: FlippableTriangulation,
             try: 
                 score = worst_case_blocking_edges(a_working, set_b, {e}, k)
                 edge_by_score.append((e, score))
-                if(score > 0):
-                   print(score)
 
             except ValueError:
                 continue
         best_edge, best_score = max(edge_by_score, key=lambda x: x[1])
-        if best_score == 0:
-            troubles_in_paradise += 1
+        if best_score >= 0:
+           # troubles_in_paradise += 1
             
             # בונים את רשימת המועמדים
             candidates = [e for e in setChangedEdges if e not in set_b and e not in lastFlips]
@@ -69,22 +67,11 @@ def distance(a: FlippableTriangulation,
                         toAdd.add(flip_rev)
                         setFlips.add(e)
                         setFlipsWithPartner.add((e, flip_rev))
+                        edge_attempt_count[flip_rev] = 1 + edge_attempt_count[e]
                         amount += 1
                     except ValueError:
                         pass  # אם אי אפשר להפוך את הצלע, פשוט ממשיכים
 
-            if candidates:
-                try:
-                    e = random.choice(candidates)
-                    flip_rev = normalize_edge(*a_working.get_flip_partner(e))
-                    a_working.add_flip(e)
-                    toRemove.add(e)
-                    toAdd.add(flip_rev)
-                    setFlips.add(e)
-                    setFlipsWithPartner.add((e, flip_rev))
-                    amount += 1
-                except ValueError:
-                    pass  # אם אי אפשר להפוך את הצלע, פשוט ממשיכים
 
         else:
             troubles_in_paradise = 0
@@ -115,9 +102,9 @@ def distance(a: FlippableTriangulation,
         dist+=1
         if(troubles_in_paradise > 10):
             print(f"too manny troubles in paradise")
+            dist = 444
             break
-        print(f"num of flips : {amount}")
-        print(setChangedEdges)
+        #print(f"num of flips : {amount}")
         giga+=1
 
 
@@ -221,13 +208,13 @@ def blocking_edges(a: FlippableTriangulation,
                     blocked_edges.add(e_norm)
     
     score = len(free_edges)
-    for edge in triangles:
-        if e not in free_edges and e  not in set_b and e in a_temp.possible_flips():
+    for edge in blocked_edges:
+        if edge not in free_edges and edge  not in set_b and edge in a_temp.possible_flips():
             try:
                 a_dup = a_temp.fork()
-                a_dup.add_flip(e)
+                a_dup.add_flip(edge)
                 a_dup.commit()
-                t1, t2 = new_triangles(a,e)
+                t1, t2 = new_triangles(a,edge)
                 for triangle in [t1, t2]:
                     for e in triangle: 
                        e_norm = normalize_edge(*e)
@@ -307,8 +294,8 @@ def worst_case_blocking_edges(a: FlippableTriangulation,
                 a_dup.commit()
                 t1, t2 = new_triangles(a,e)
                 for triangle in [t1, t2]:
-                    for e in triangle: 
-                       e_norm = normalize_edge(*e)
+                    for e1 in triangle: 
+                       e_norm = normalize_edge(*e1)
                        if isFree(a_dup, set_b, e_norm):
                          free_edges.add(e_norm)
 

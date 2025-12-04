@@ -428,176 +428,164 @@ def visualize_components(dsu, comp_info, Trings, final_edges=None, stages_of_fli
 
 def optimize_flip_sequence(comp_info, original_layers):
     """
-    מקבל גרף תלויות של flips ומסדר אותם מחדש לפי:
-    1. זיהוי קומפוננטות בלתי תלויות (באמצעות DSU)
-    2. מיון טופולוגי בתוך כל קומפוננטה
-    3. התחלה מוקדמת של קומפוננטות שהתחילו מאוחר
-    
-    Args:
-        comp_info: dict עם מידע על כל node - {"edge": edge, "layer": layer, "enabled": set_of_dependencies}
-        original_layers: list של sets של tuples (edge, flip_partner) המקורי
-        
-    Returns:
-        optimized_distance: מספר השכבות החדש
-        optimized_flips_by_layer: list של sets של edges (format כמו distance)
-        optimized_flips_with_partner_by_layer: list של sets של (edge, partner) (format כמו distance)
+    אלגוריתם משופר עם debug מפורט:
+    1. מזהה קומפוננטות בלתי תלויות
+    2. לכל קומפוננטה שמתחילה בשכבה k>0: מזיז אותה k שכבות אחורה
+    3. המרחק החדש = max(אורך קומפוננטה אחרי אופטימיזציה)
     """
     print("\n" + "="*60)
     print("OPTIMIZING FLIP SEQUENCE")
     print("="*60)
     
     if not comp_info:
-        print("WARNING: comp_info is empty! Returning original sequence.")
+        print("WARNING: comp_info is empty! Returning original layers.")
         flips_by_layer = [set(e for e, _ in layer) for layer in original_layers]
         return len(original_layers), flips_by_layer, original_layers
     
-    # 🔴 שלב 1: בניית DSU למציאת קומפוננטות בלתי תלויות
-    dsu = DSU()
+    # DEBUG: בדיקת תאימות
+    print("\n🔍 DEBUG - Format Check:")
+    if original_layers:
+        sample_flip = list(original_layers[0])[0] if original_layers[0] else None
+        if sample_flip:
+            print(f"   Sample flip from original_layers: {sample_flip}")
+            print(f"   Type: edge={type(sample_flip[0])}, partner={type(sample_flip[1])}")
+    
+    sample_nodes = list(comp_info.keys())[:3]
+    print(f"   Sample nodes from comp_info: {sample_nodes}")
+    if sample_nodes:
+        print(f"   Type: {type(sample_nodes[0])}, parts: {sample_nodes[0]}")
+    
+    # בניית מיפוי: edge -> שכבות בהן הוא מופיע
+    edge_to_layers = defaultdict(list)
     for node, info in comp_info.items():
+        edge, layer = node
+        edge_to_layers[edge].append(layer)
+    
+    print(f"\n   Total unique edges in comp_info: {len(edge_to_layers)}")
+    
+    # שלב 1: DSU - מציאת קומפוננטות
+    dsu = DSU()
+    for node in comp_info.keys():
         dsu.add(node)
+    
+    for node, info in comp_info.items():
         for dep_edge in info["enabled"]:
             dep_node = (dep_edge, info["layer"] - 1)
             if dep_node in comp_info:
-                dsu.add(dep_node)
                 dsu.union(node, dep_node)
     
-    # איסוף קומפוננטות
     components = defaultdict(list)
     for node in comp_info.keys():
         rep = dsu.find(node)
         components[rep].append(node)
     
-    print(f"Found {len(components)} independent components")
+    print(f"\nFound {len(components)} independent components")
+    print(f"Total nodes in comp_info: {len(comp_info)}")
     
-    # 🔴 שלב 2: לכל קומפוננטה, מצא את השכבה המינימלית שלה
-    component_min_layer = {}
-    for rep, nodes in components.items():
-        min_layer = min(comp_info[node]["layer"] for node in nodes)
-        component_min_layer[rep] = min_layer
-        print(f"Component {rep[:2]}... starts at layer {min_layer}, has {len(nodes)} nodes")
+    # שלב 2: חישוב shift לכל קומפוננטה
+    component_shift = {}
+    node_to_shift = {}  # מיפוי ישיר: node -> shift
+    max_component_end = 0
     
-    # 🔴 שלב 3: מיון טופולוגי לכל קומפוננטה בנפרד
-    component_sequences = {}  # rep -> list of layers של הקומפוננטה
+    components_with_optimization = 0
     
     for rep, nodes in components.items():
-        # בניית גרף תלויות רק בתוך הקומפוננטה
-        graph = defaultdict(list)
-        in_degree = defaultdict(int)
+        layers = [node[1] for node in nodes]
+        min_layer = min(layers)
+        max_layer = max(layers)
         
+        shift = min_layer
+        component_length = max_layer - min_layer + 1
+        
+        component_shift[rep] = shift
+        
+        # שמור את ה-shift לכל node בקומפוננטה
         for node in nodes:
-            info = comp_info[node]
-            in_degree[node] = len(info["enabled"])
-            
-            for dep_edge in info["enabled"]:
-                dep_node = (dep_edge, info["layer"] - 1)
-                if dep_node in nodes:  # רק תלויות בתוך הקומפוננטה
-                    graph[dep_node].append(node)
+            node_to_shift[node] = shift
         
-        # Topological sort
-        ready_queue = deque([n for n in nodes if in_degree[n] == 0])
-        layers = []
+        # המרחק החדש = אורך הקומפוננטה הכי ארוכה אחרי אופטימיזציה
+        optimized_length = component_length
+        max_component_end = max(max_component_end, optimized_length)
         
-        while ready_queue:
-            current_layer = []
-            batch_size = len(ready_queue)
-            
-            for _ in range(batch_size):
-                node = ready_queue.popleft()
-                current_layer.append(node)
-                
-                for dependent in graph[node]:
-                    in_degree[dependent] -= 1
-                    if in_degree[dependent] == 0:
-                        ready_queue.append(dependent)
-            
-            if current_layer:
-                layers.append(current_layer)
-        
-        component_sequences[rep] = layers
-        print(f"  Component needs {len(layers)} sequential layers")
+        if shift > 0:
+            components_with_optimization += 1
+            print(f"✨ Component: layers {min_layer}-{max_layer}, shift={shift}, length={component_length} → optimized!")
     
-    # 🔴 שלב 4: שילוב הקומפוננטות - כל קומפוננטה מתחילה מוקדם ככל האפשר
-    # נמצא את המקסימום של אורכי הקומפוננטות
-    max_component_length = max(len(seq) for seq in component_sequences.values())
+    print(f"\n🎯 Components that can be optimized: {components_with_optimization}/{len(components)}")
     
-    # נצור שכבות חדשות
-    optimized_layers = [[] for _ in range(max_component_length)]
+    # שלב 3: בניית שכבות חדשות
+    max_layers_needed = max(max_component_end, len(original_layers))
+    new_layers = [set() for _ in range(max_layers_needed)]
     
-    # נוסיף כל קומפוננטה החל מההתחלה (שכבה 0)
-    for rep, sequence in component_sequences.items():
-        for relative_layer, nodes in enumerate(sequence):
-            optimized_layers[relative_layer].extend(nodes)
+    processed_optimized = 0
+    processed_original = 0
+    not_found = 0
     
-    # 🔴 שלב 5: המרה לפורמט הנכון עם flip partners
-    flips_by_layer = []
-    flips_with_partner_by_layer = []
-    
-    for layer_nodes in optimized_layers:
-        if not layer_nodes:
-            continue
+    for original_layer_idx, layer_set in enumerate(original_layers):
+        for edge, partner in layer_set:
+            # נסה למצוא את ה-node המתאים
+            node = (edge, original_layer_idx)
             
-        layer_flips = set()
-        layer_with_partner = set()
-        
-        for node in layer_nodes:
-            edge, original_layer = node
+            if node in node_to_shift:
+                # אופטימיזציה: הזז לפי הקומפוננטה
+                shift = node_to_shift[node]
+                new_layer_idx = original_layer_idx - shift
+                processed_optimized += 1
+            elif edge in edge_to_layers:
+                # ה-edge קיים אבל לא בשכבה הזו - זה מוזר, נשאר במקום
+                new_layer_idx = original_layer_idx
+                processed_original += 1
+            else:
+                # ה-edge בכלל לא קיים ב-comp_info
+                new_layer_idx = original_layer_idx
+                not_found += 1
             
-            # מציאת ה-flip_partner המקורי
-            flip_partner = None
-            for item in original_layers[original_layer]:
-                orig_edge, orig_partner = item
-                if orig_edge == edge:
-                    flip_partner = orig_partner
-                    break
-            
-            if flip_partner:
-                layer_flips.add(edge)
-                layer_with_partner.add((edge, flip_partner))
-        
-        flips_by_layer.append(layer_flips)
-        flips_with_partner_by_layer.append(layer_with_partner)
+            if 0 <= new_layer_idx < max_layers_needed:
+                new_layers[new_layer_idx].add((edge, partner))
+    
+    # שלב 4: ניקוי שכבות ריקות
+    flips_with_partner = [layer for layer in new_layers if layer]
+    flips_by_layer = [set(e for e, _ in layer) for layer in flips_with_partner]
     
     # סטטיסטיקות
     total_original = sum(len(layer) for layer in original_layers)
-    total_optimized = sum(len(layer) for layer in flips_by_layer)
+    total_optimized = sum(len(layer) for layer in flips_with_partner)
+    
+    print(f"\n✅ Processed (optimized): {processed_optimized} flips")
+    print(f"✅ Processed (kept original): {processed_original} flips")
+    print(f"⚠️  Not found in comp_info: {not_found} flips")
+    print(f"✅ Total in output: {total_optimized} flips")
     
     print(f"\n{'='*60}")
     print(f"OPTIMIZATION RESULTS:")
     print(f"Original layers: {len(original_layers)}")
-    print(f"Optimized layers: {len(flips_by_layer)}")
-    print(f"Improvement: {len(original_layers) - len(flips_by_layer)} layers saved!")
-    print(f"Flips processed: {total_optimized}/{total_original}")
-    print(f"Independent components: {len(components)}")
+    print(f"Optimized layers: {len(flips_with_partner)}")
+    improvement = len(original_layers) - len(flips_with_partner)
+    if improvement > 0:
+        print(f"✨ Improvement: {improvement} layers saved! ({improvement/len(original_layers)*100:.1f}%)")
+    elif improvement < 0:
+        print(f"⚠️  Slight increase: {-improvement} layers added")
+    else:
+        print(f"❌ No improvement - all flips stayed in original positions!")
+        print(f"   Reason: processed_optimized = {processed_optimized}")
+    
+    print(f"Flips: {total_optimized}/{total_original}")
+    if total_optimized != total_original:
+        print(f"⚠️  WARNING: Lost {total_original - total_optimized} flips!")
     print(f"{'='*60}\n")
     
-    return len(flips_by_layer), flips_by_layer, flips_with_partner_by_layer
+    return len(flips_with_partner), flips_by_layer, flips_with_partner
 
 
-# 🔴 אם Draw_distance עדיין לא עובד, הנה wrapper שמתקן את הפורמט:
 def optimize_and_fix_format(comp_info, original_layers):
-    """
-    Wrapper שמוודא שהפורמט תואם למה ש-Draw_distance מצפה
-    """
+    """Wrapper שמוודא פורמט נכון"""
     dist, flips_by_layer, flips_with_partner = optimize_flip_sequence(comp_info, original_layers)
     
-    # וידוא שהפורמט נכון - כל שכבה היא set של tuples
-    fixed_flips = []
-    fixed_with_partner = []
-    
-    for layer_flips, layer_with_partner in zip(flips_by_layer, flips_with_partner):
-        # המרה ל-set אם צריך
-        if not isinstance(layer_flips, set):
-            layer_flips = set(layer_flips)
-        if not isinstance(layer_with_partner, set):
-            layer_with_partner = set(layer_with_partner)
-        
-        fixed_flips.append(layer_flips)
-        fixed_with_partner.append(layer_with_partner)
-    
     print("\n📦 Format verification:")
-    print(f"   Type of flips_by_layer[0]: {type(fixed_flips[0]) if fixed_flips else 'empty'}")
-    print(f"   Type of flips_with_partner[0]: {type(fixed_with_partner[0]) if fixed_with_partner else 'empty'}")
-    if fixed_with_partner:
-        print(f"   Example item in layer 0: {list(fixed_with_partner[0])[:2] if fixed_with_partner[0] else 'empty layer'}")
+    print(f"   Layers: {len(flips_by_layer)}")
+    if flips_by_layer:
+        print(f"   Type: {type(flips_by_layer[0])}")
+        print(f"   Layer 0 size: {len(flips_with_partner[0])}")
+        print(f"   Example: {list(flips_with_partner[0])[:3]}")
     
-    return dist, fixed_flips, fixed_with_partner
+    return dist, flips_by_layer, flips_with_partner

@@ -8,10 +8,10 @@ from cgshop2026_pyutils.geometry import FlippableTriangulation, draw_edges, Poin
 from cgshop2026_pyutils.schemas import CGSHOP2026Instance
 from c_builder2 import build_flip_components
 from c_builder2 import visualize_flip_components
-from c_builder2 import visualize_components , optimize_flip_sequence
+from c_builder2 import visualize_components , optimize_and_fix_format
 #from c_builder2 import full_build_components
 INSTANCE_FOLDER = "benchmark_instances"
-INSTANCE_FILENAME = "random_instance_4_40_2.json" 
+INSTANCE_FILENAME = "woc-205-tsplib-8058c7cb.json" 
 
 def main():
     # 1. Locate and Load the Instance
@@ -54,11 +54,11 @@ def main():
 
 
             dist, stages_of_flips , stages_of_flips_with_partner = distance(a, b)
-            dsu, comp_info, Trings = build_flip_components(stages_of_flips_with_partner, a)
-            dist, stages_of_flips , stages_of_flips_with_partner = optimize_flip_sequence(comp_info,stages_of_flips)
+          #  dsu, comp_info, Trings = build_flip_components(stages_of_flips_with_partner, a)
+          #  dist, stages_of_flips , stages_of_flips_with_partner = optimize_and_fix_format(comp_info,stages_of_flips)
             
             #visualize_flip_components(comp_info)
-            visualize_components(dsu, comp_info, Trings, stages_of_flips_with_partner)
+           # visualize_components(dsu, comp_info, Trings, stages_of_flips_with_partner)
             
             Draw_distance(dist, stages_of_flips, a, b,points_list)
             #components_dict, comp_deps, deps, flip_to_comp = build_flip_components(stages_of_flips_with_partner,a)
