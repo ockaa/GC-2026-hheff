@@ -2,3 +2,4 @@ benchmark_instances/
 examples/
 pyutils26/
 showmewhy.py
+__pycache__/
