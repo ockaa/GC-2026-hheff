@@ -5,10 +5,11 @@ import matplotlib.pyplot as plt
 from cgshop2026_pyutils.io import read_instance
 from cgshop2026_pyutils.geometry import FlippableTriangulation, draw_edges, Point 
 from cgshop2026_pyutils.schemas import CGSHOP2026Instance
-from drawing import Draw_distance
+from drawing2 import Draw_distance
 from distance import distance
+from Fdist import distance_eppstein
 INSTANCE_FOLDER = "benchmark_instances"
-INSTANCE_FILENAME = "random_instance_4_40_2.json" 
+INSTANCE_FILENAME = "random_instance_16_15_2.json" 
 
 def main():
     # 1. Locate and Load the Instance
@@ -38,8 +39,9 @@ def main():
     triang2 = instance.triangulations[1]
     a: FlippableTriangulation = FlippableTriangulation.from_points_edges(points_list, triang1)
     b: FlippableTriangulation = FlippableTriangulation.from_points_edges(points_list, triang2)
-    dist,stages_of_flips = distance(a.fork(),b.fork())
-    Draw_distance(dist,stages_of_flips,a,b)
+    print("\n--- 2. Calculating Distance and Flip Sequence ---")
+    dist = distance_eppstein(a.fork(),b.fork(),points_list)
+    print(f"Hausdorff distance is: {dist}")
     
 if __name__ == "__main__":
     main()

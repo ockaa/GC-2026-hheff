@@ -7,28 +7,19 @@ def Draw_distance(dist: int,
                   a: FlippableTriangulation,
                   b: FlippableTriangulation,
                   points_):
-    """
-    dist: מספר הפלפולים הכולל
-    stages_of_flips: רשימת שלבי פלפולים, כל שלב = רשימת קשתות
-    a, b: טריאנגולציות מסוג FlippableTriangulation
-    points_: רשימת נקודות המקור (Point objects)
-    """
 
     print(f"the distance is: {dist}")
 
-    # --- חישוב קצוות שונים (שונה במקצת מהקוד הקודם, אבל נשאר) ---
+    # --- Pre-calculations ---
     edges_b = set(b.get_edges())
-    
-    # חישוב עבור חלון 1:
     edges_a_original = set(a.get_edges())
     different_edges_a = edges_a_original.difference(edges_b)
     different_edges_b = edges_b.difference(edges_a_original)
 
-
     # --- Window 1: Original vs. Target ---
     fig1, axes1 = plt.subplots(nrows=1, ncols=2, figsize=(12, 6))
 
-    # Plot 'a' with differing edges in red
+    # Plot 'a'
     draw_flips(a, show_indices=True, ax=axes1[0])
     for u, v in different_edges_a:
         x = [points_[u].x(), points_[v].x()]
@@ -36,7 +27,7 @@ def Draw_distance(dist: int,
         axes1[0].plot(x, y, color='red', linewidth=2)
     axes1[0].set_title(f"Triangulation 1 (Original 'a')\n{len(different_edges_a)} edges differ")
 
-    # Plot 'b' with differing edges in red
+    # Plot 'b'
     draw_flips(b, show_indices=True, ax=axes1[1])
     for u, v in different_edges_b:
         x = [points_[u].x(), points_[v].x()]
@@ -45,38 +36,54 @@ def Draw_distance(dist: int,
     axes1[1].set_title(f"Triangulation 2 (Target 'b')\n{len(different_edges_b)} edges differ")
 
 
-    # --- Window 2: Flip Sequence (קריאות משופרת) ---
+    # --- Window 2: Flip Sequence (Last 5 Steps) ---
     print("--- Creating Window 2: Flip Sequence ---")
-    num_stages = len(stages_of_flips)
-    total_plots = num_stages + 1
     
-    # *** הגדרות גודל ופריסה משופרות ***
-    ncols = 4  
+    # 1. Determine Start Index
+    total_stages_count = len(stages_of_flips)
+    start_index = max(0, total_stages_count - 1)
+    
+    # 2. Get the specific stages we want to plot
+    stages_to_plot = stages_of_flips[start_index:]
+    num_stages_to_plot = len(stages_to_plot)
+    total_plots = num_stages_to_plot + 1 # +1 for the state BEFORE the last 5 flips
+    
+    # 3. Fast-Forward a_tracker to the correct starting state
+    a_tracker = a.fork()
+    # Apply all flips that happen BEFORE our start_index invisibly
+    for stage in stages_of_flips[:start_index]:
+        for edge in stage:
+            try:
+                a_tracker.add_flip(edge)
+            except ValueError:
+                pass
+        a_tracker.commit()
+
+    # 4. Setup Grid
+    ncols = 3 # 3 columns is usually good for 6 plots
     nrows = math.ceil(total_plots / ncols)
-    # גודל גדול יותר, במיוחד בגובה (6 במקום 5 פר שורה), כדי לאפשר מקום ל-8 שורות
-    fig2, axes2 = plt.subplots(nrows=nrows, ncols=ncols, figsize=(20, nrows * 6)) 
+    
+    fig2, axes2 = plt.subplots(nrows=nrows, ncols=ncols, figsize=(18, nrows * 6)) 
     axes2_flat = axes2.flat
-    
-    # *** שיפור קריטי 1: הוספת רווחים אנכיים ואופקיים ***
     fig2.subplots_adjust(hspace=0.4, wspace=0.3)
+
+    # 5. Plot the "Start" State (which is actually state at dist-5)
+    current_edges_a = set(a_tracker.get_edges())
+    diff_start = current_edges_a.difference(edges_b)
     
-    # יצירת עותק למעקב אחר השלבים
-    a_tracker = a.fork() 
-
-
-    # Plot Initial State (Stage 0)
-    # *** שיפור קריטי 2: הסרת אינדקסים מהרצף ***
     draw_flips(a_tracker, show_indices=False, ax=axes2_flat[0]) 
-    for u, v in different_edges_a:
+    for u, v in diff_start:
         x = [points_[u].x(), points_[v].x()]
         y = [points_[u].y(), points_[v].y()]
         axes2_flat[0].plot(x, y, color='red', linewidth=2)
-    axes2_flat[0].set_title(f"Initial State (Stage 0)\n{len(different_edges_a)} edges differ")
-    axes2_flat[0].tick_params(axis='both', which='major', labelsize=8) # הקטנת גודל טקסט הצירים
+    
+    axes2_flat[0].set_title(f"State at Step {start_index}\n{len(diff_start)} edges differ")
+    axes2_flat[0].tick_params(axis='both', which='major', labelsize=8)
 
-    # Loop through stages
-    for i, flips_in_this_stage in enumerate(stages_of_flips):
+    # 6. Loop through the *sliced* stages
+    for i, flips_in_this_stage in enumerate(stages_to_plot):
         plot_index = i + 1
+        real_stage_number = start_index + i + 1
 
         # Apply flips
         for edge in flips_in_this_stage:
@@ -90,26 +97,22 @@ def Draw_distance(dist: int,
         current_edges_a = set(a_tracker.get_edges())
         remaining_to_flip = current_edges_a.difference(edges_b) 
 
-        # Plot the new state
-        # *** שיפור קריטי 2: הסרת אינדקסים מהרצף ***
+        # Plot
         draw_flips(a_tracker, show_indices=False, ax=axes2_flat[plot_index]) 
         for u, v in remaining_to_flip:
             x = [points_[u].x(), points_[v].x()]
             y = [points_[u].y(), points_[v].y()]
             axes2_flat[plot_index].plot(x, y, color='red', linewidth=2)
-        axes2_flat[plot_index].set_title(f"State After Stage {i+1}\n{len(remaining_to_flip)} edges differ")
-        axes2_flat[plot_index].tick_params(axis='both', which='major', labelsize=8) # הקטנת גודל טקסט הצירים
-
+            
+        axes2_flat[plot_index].set_title(f"State After Step {real_stage_number}\n{len(remaining_to_flip)} edges differ")
+        axes2_flat[plot_index].tick_params(axis='both', which='major', labelsize=8)
 
     # Hide unused subplots
-    for i in range(total_plots, nrows * ncols):
+    for i in range(total_plots, len(axes2_flat)):
         axes2_flat[i].axis('off')
         
     fig1.tight_layout()
-    # לא נשתמש ב-tight_layout עבור fig2 כי השתמשנו ב-subplots_adjust
-    # fig2.tight_layout() 
 
-    # Show both windows
     print("\n--- Displaying both windows ---")
     plt.show()
 
