@@ -43,31 +43,12 @@ def distance(a: FlippableTriangulation,
             except ValueError:
                 continue
         
-        candients,secondFlip = Huristic( a_working, set_b,   setChangedEdges, lastFlips, k)
-        for e in candients:
-            try:
-                    flip_rev = normalize_edge(*a_working.get_flip_partner(e))
-                    a_working.add_flip(e)
-                    toRemove.add(e)
-                    toAdd.add(flip_rev)
-                    setFlips.add(e)
-                    setFlipsWithPartner.add((e,flip_rev))
-                    edge_attempt_count[flip_rev] = 1 + edge_attempt_count[e]
-                    amount+=1
-            except ValueError:
-                pass
-        for e in secondFlip:
-            try:
-                    flip_rev = normalize_edge(*a_working.get_flip_partner(e))
-                    a_working.add_flip(e)
-                    toRemove.add(e)
-                    toAdd.add(flip_rev)
-                    setFlips.add(e)
-                    setFlipsWithPartner.add((e,flip_rev))
-                    edge_attempt_count[flip_rev] = 1 + edge_attempt_count[e]
-                    amount+=1
-            except ValueError:
-                pass
+        setFlips_h, toRemove_h, toAdd_h ,flips_h = Huristic(a_working, set_b, setChangedEdges, lastFlips, k)
+        toRemove |= toRemove_h
+        toAdd |= toAdd_h
+        setFlips |= setFlips_h
+        setFlipsWithPartner |= flips_h
+        
         setChangedEdges -= toRemove
         setChangedEdges |= toAdd
         lastFlips = setFlips.copy()
@@ -76,51 +57,70 @@ def distance(a: FlippableTriangulation,
         flips_by_layer.append(setFlips)
         flips_with_partner_by_layer.append(setFlipsWithPartner)
         dist+=1
-        if(troubles_in_paradise > 10):
-            print(f"too manny troubles in paradise")
-            dist = 444
+
+        if(dist > 250):
+            print(f"250 itertion it too much itteratio we are goin to stop")
             break
-        #print(f"num of flips : {amount}")
-        giga+=1
-        print(f"too manny troubles in paradise {dist}")
 
-
+    if(dist <= 250):
+        print(f"end distance is {dist}")
+    else:
+        print(f"couldnt find end distance sorry")
     return dist , flips_by_layer , flips_with_partner_by_layer
-
 def Huristic(
     a: FlippableTriangulation,
     set_b: set[tuple[int, int]],
     setChangedEdges: set[tuple[int, int]],
     lastFlips: set[tuple[int, int]],
     k: int
-) -> list[tuple[int, int]]:
+) -> tuple[set, set, set]:  # מחזיר גם toRemove וגם toAdd
        
-        edge_by_score = []
-        to_Flip = set()
-        secondFlip = set()
-        for e in set(setChangedEdges):
-            if e in a.possible_flips():
-                score = blocking_edges(a, set_b, {e}, k)
-                edge_by_score.append((e, score))
+    edge_by_score = []
+    to_Flip = set()
+    toRemove = set()
+    toAdd = set()
+    setFlipsWithPartner = set()
+    
+    for e in set(setChangedEdges):
+        try:
+            score = blocking_edges(a, set_b, {e}, k)
+            edge_by_score.append((e, score))
+        except ValueError:
+            continue
 
-        best_edge, best_score = max(edge_by_score, key=lambda x: x[1])
+    best_edge, best_score = max(edge_by_score, key=lambda x: x[1])
 
-
-        for e, score in edge_by_score:
+    for e, score in edge_by_score:
+        try:
             flip_rev = normalize_edge(*a.get_flip_partner(e))
             if e in a.possible_flips() and flip_rev not in lastFlips:
-                if (score > 0)and e not in set_b:
+                if (score > 0) and e not in set_b:
+                    a.add_flip(e) 
                     to_Flip.add(e)
-
-                        
-        if best_score >= 0:
-            candidates = [e for e in setChangedEdges if e in a.possible_flips() and e not in lastFlips]
-            for e in candidates:
-                if edge_attempt_count[e] == 0:
+                    toRemove.add(e)
+                    toAdd.add(flip_rev)
+                    setFlipsWithPartner.add((e,flip_rev))
+                    edge_attempt_count[flip_rev] = 1 + edge_attempt_count[e]
+        except ValueError:
+            continue
+                         
+    if best_score == 0 or len(setChangedEdges)> 100:
+        candidates = [e for e in setChangedEdges if e not in set_b and e not in lastFlips]
+        for e in candidates:
+            if edge_attempt_count[e] == 0:
+                try:
                     e = random.choice(candidates)
-                    secondFlip.add(e)
+                    flip_rev = normalize_edge(*a.get_flip_partner(e))
+                    a.add_flip(e)  
+                    to_Flip.add(e)
+                    toRemove.add(e)
+                    toAdd.add(flip_rev)
+                    setFlipsWithPartner.add((e,flip_rev))
+                    edge_attempt_count[flip_rev] = 1 + edge_attempt_count[e]
+                except:
+                    pass
 
-        return to_Flip ,secondFlip
+    return to_Flip, toRemove, toAdd ,setFlipsWithPartner
 
 def blocking_edges(a: FlippableTriangulation, 
                    set_b: set[tuple[int, int]],

@@ -1,7 +1,10 @@
 import matplotlib.pyplot as plt
 import math
+from matplotlib import gridspec
+from matplotlib import gridspec
+from cgshop2026_pyutils.geometry import draw_edges
 from cgshop2026_pyutils.geometry import FlippableTriangulation, draw_flips 
-
+from cgshop2026_pyutils.geometry import draw_edges
 def Draw_distance(dist: int,
                   stages_of_flips: list[list[tuple[int, int]]],
                   a: FlippableTriangulation,
@@ -114,3 +117,109 @@ def Draw_distance(dist: int,
     plt.show()
 
     print("--- All stages processed. ---")
+
+
+def Draw_triangulation(a: FlippableTriangulation, points_list):
+    fig, ax = plt.subplots(figsize=(8, 8))
+
+    points = points_list
+    edges = a.get_edges()
+
+    draw_edges(points, edges, ax=ax)
+
+    for i, p in enumerate(points):
+        ax.text(p.x(), p.y(), str(i), color="red", fontsize=8)
+
+    ax.set_title("Closest Triangulation")
+
+    plt.tight_layout()
+    plt.show()
+
+def Draw_All_Triangulation(triangulations, points_list):
+    n = len(triangulations)
+    cols = 2
+    rows = (n + 1) // 2
+
+    fig, axes = plt.subplots(rows, cols, figsize=(10, 5 * rows))
+    axes = axes.flatten()
+
+    for ax, tri in zip(axes, triangulations):
+
+        points = points_list
+        edges = tri.get_edges()
+
+        draw_edges(points, edges, ax=ax)
+
+        for i, p in enumerate(points):
+            ax.text(p.x(), p.y(), str(i), color="red", fontsize=8)
+
+        ax.set_title("Triangulation")
+
+    plt.tight_layout()
+    plt.show()
+
+
+
+def Draw_All_Triangulation_With_Distances(triangulations, points_list, dists, closest_idx=None):
+    """
+    triangulations: list of FlippableTriangulation
+    points_list: list of Points
+    dists: n x n matrix of distances
+    closest_idx: index of triangulation closest to all others
+    """
+    n = len(triangulations)
+
+    ncols = 3
+    nrows = (n + ncols - 1) // ncols
+
+    fig = plt.figure(figsize=(ncols*4, nrows*3 + 2))  # מקום נוסף לטבלה
+
+    gs = gridspec.GridSpec(nrows + 1, ncols, height_ratios=[3]*nrows + [1], hspace=0.4)
+
+    for idx, tri in enumerate(triangulations):
+        row = idx // ncols
+        col = idx % ncols
+        ax = fig.add_subplot(gs[row, col])
+
+        edges = tri.get_edges()
+        draw_edges(points_list, edges, ax=ax)
+
+        for i, p in enumerate(points_list):
+            ax.text(p.x(), p.y(), str(i), color='mediumvioletred', fontsize=5)
+
+        title = f"Tri #{idx}"
+        if closest_idx is not None and idx == closest_idx:
+            title += " (Closest)"
+            ax.set_title(title, fontweight='bold', color='deeppink')
+        else:
+            ax.set_title(title)
+        ax.axis('off')
+
+    ax_table = fig.add_subplot(gs[nrows, :])
+    ax_table.axis('off')
+
+    cell_text = []
+    for i, row_data in enumerate(dists):
+        row_sum = sum(row_data)
+        row_str = [f"{d:.2f}" for d in row_data] + [f"{row_sum:.2f}"]
+        cell_text.append(row_str)
+
+    col_labels = [f"{i}" for i in range(n)] + ["Sum"]
+    table = ax_table.table(cellText=cell_text,
+                           rowLabels=[f"Tri #{i}" for i in range(n)],
+                           colLabels=col_labels,
+                           cellLoc='center',
+                           rowLoc='center',
+                           loc='center')
+
+    if closest_idx is not None:
+        for col in range(n + 1): 
+            cell = table[closest_idx + 1, col]  
+            cell.set_facecolor("pink")
+
+    table.auto_set_font_size(False)
+    table.set_fontsize(8)
+    table.scale(1, 1.2)
+
+    plt.tight_layout()
+    plt.show()
