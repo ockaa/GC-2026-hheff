@@ -10,7 +10,7 @@ from drawing import Draw_distance, Draw_Manager_Components ,draw_triangulation
 from distance import distance
 from c_builder import ConnectedDirectedComponent, DynamicGraphManager, MakeComponents
 INSTANCE_FOLDER = "benchmark_instances"
-INSTANCE_FILENAME = "woc-205-tsplib-8058c7cb.json" 
+INSTANCE_FILENAME = "random_instance_881_320_10.json" 
 
 def main():
     # 1. Locate and Load the Instance
@@ -45,19 +45,19 @@ def main():
 
     a_clone = a.fork()
     points_coords = [(p.x(), p.y()) for p in a._flip_map.points]
-
     
-    draw_triangulation(
+    
+    """draw_triangulation(
         points_coords, 
         a_clone.get_edges()
-    )
+    )"""
     dist,stages_of_flips,l2 = distance(a.fork(),b.fork())
-    
-    print(f"Distance between triangulations: {dist}")
+    stages_of_flips_comp = list(list())
+    print(f"Distance between triangulations before comp: {dist}")
 
     # Create a worker copy so we don't modify the original 'a'
     a_working = a.fork()    
-
+    """
     for i, stage in enumerate(stages_of_flips):
         print(f"\n--- Stage {i} ---")
         
@@ -70,7 +70,7 @@ def main():
                 print(f"  main Failed to flip {edge}: {e}")
             
         # Commit the changes for this stage before moving to the next
-        a_working.commit()
+        a_working.commit()"""
     a_clone2 = a.fork()
     manager = MakeComponents(a, stages_of_flips)
     
@@ -91,9 +91,10 @@ def main():
 
     # 2. Execute the Global Layers sequentially
     print(f"Total parallel stages: {len(global_layers)}")
-    
+    dist_comp = len(global_layers)
     for i, layer in enumerate(global_layers):
         # print(f"Processing Global Layer {i} with {len(layer)} flips...")
+        stages_of_flips_comp.append(list())
         
         for node_id in layer:
             # node_id is (Edge_Before, Edge_After, ID)
@@ -101,6 +102,8 @@ def main():
             
             try:
                 a_clone2.add_flip(edge_to_flip)
+                # FIX: Use 'i' (the index) instead of 'layer' (the list object)
+                stages_of_flips_comp[i].append(edge_to_flip) 
             except ValueError:
                 # This catches edges that might conflict within the same batch
                 # (Though topological sort usually prevents this for dependencies)
@@ -108,8 +111,8 @@ def main():
         
         # Commit AFTER processing the full layer (All components advance together)
         a_clone2.commit()
-    print(f"is {a_clone2.__eq__(b)}")
-    Draw_distance(dist, stages_of_flips, a,b,points_list)
+    print(f"do the flips lead to b: {a_clone2.__eq__(b)}")
+    Draw_distance(dist_comp, stages_of_flips_comp, a,b,points_list)
     Draw_Manager_Components(manager)
 if __name__ == "__main__":
     main()

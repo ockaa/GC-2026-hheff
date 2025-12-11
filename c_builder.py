@@ -215,7 +215,7 @@ class DynamicGraphManager:
             if comp_u is not comp_v:
                 # MERGE DETECTED!
                 # We merge v into u (arbitrary choice)
-                print(f"Merging component of {v} into component of {u}...")
+                #print(f"Merging component of {v} into component of {u}...")
                 
                 # 1. Perform the data merge
                 comp_u.merge(comp_v)
