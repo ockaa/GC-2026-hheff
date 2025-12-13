@@ -6,11 +6,12 @@ import matplotlib.pyplot as plt
 from cgshop2026_pyutils.io import read_instance
 from cgshop2026_pyutils.geometry import FlippableTriangulation, draw_edges, Point 
 from cgshop2026_pyutils.schemas import CGSHOP2026Instance
-from drawing import Draw_distance, Draw_Manager_Components ,draw_triangulation
+from drawing import Draw_distance
 from distance import distance
-from c_builder import ConnectedDirectedComponent, DynamicGraphManager, MakeComponents
+import helpFuncs
+from Components import ConnectedDirectedComponent, DynamicGraphManager, MakeComponents , make_component_flip_stages,check_if_flips_is_b
 INSTANCE_FOLDER = "benchmark_instances"
-INSTANCE_FILENAME = "random_instance_881_320_10.json" 
+INSTANCE_FILENAME = "woc-205-tsplib-8058c7cb.json" 
 
 def main():
     # 1. Locate and Load the Instance
@@ -52,67 +53,10 @@ def main():
         a_clone.get_edges()
     )"""
     dist,stages_of_flips,l2 = distance(a.fork(),b.fork())
-    stages_of_flips_comp = list(list())
     print(f"Distance between triangulations before comp: {dist}")
-
-    # Create a worker copy so we don't modify the original 'a'
-    a_working = a.fork()    
-    """
-    for i, stage in enumerate(stages_of_flips):
-        print(f"\n--- Stage {i} ---")
-        
-        for edge in stage:
-            # add_flip returns the NEW edge that was created
-            try:
-                created_edge = a_working.add_flip(edge)
-                print(f"  Flipped {edge}  -->  Created {created_edge}")
-            except ValueError as e:
-                print(f"  main Failed to flip {edge}: {e}")
-            
-        # Commit the changes for this stage before moving to the next
-        a_working.commit()"""
-    a_clone2 = a.fork()
-    manager = MakeComponents(a, stages_of_flips)
-    
-    # 1. Gather all layers from all components into a single 'Global' list of layers
-    # global_layers[0] will hold Layer 0 from Comp A, Layer 0 from Comp B, etc.
-    global_layers = []
-
-    for comp in manager.get_all_components():
-        comp_layers = comp.get_layers_topological()
-        
-        for depth, layer in enumerate(comp_layers):
-            # Ensure the global list is deep enough
-            while len(global_layers) <= depth:
-                global_layers.append([])
-            
-            # Merge this component's layer into the global layer at the same depth
-            global_layers[depth].extend(layer)
-
-    # 2. Execute the Global Layers sequentially
-    print(f"Total parallel stages: {len(global_layers)}")
-    dist_comp = len(global_layers)
-    for i, layer in enumerate(global_layers):
-        # print(f"Processing Global Layer {i} with {len(layer)} flips...")
-        stages_of_flips_comp.append(list())
-        
-        for node_id in layer:
-            # node_id is (Edge_Before, Edge_After, ID)
-            edge_to_flip = node_id[0]
-            
-            try:
-                a_clone2.add_flip(edge_to_flip)
-                # FIX: Use 'i' (the index) instead of 'layer' (the list object)
-                stages_of_flips_comp[i].append(edge_to_flip) 
-            except ValueError:
-                # This catches edges that might conflict within the same batch
-                # (Though topological sort usually prevents this for dependencies)
-                pass
-        
-        # Commit AFTER processing the full layer (All components advance together)
-        a_clone2.commit()
-    print(f"do the flips lead to b: {a_clone2.__eq__(b)}")
+    stages_of_flips_comp,dist_comp = make_component_flip_stages(a,stages_of_flips)
+    print(f"Distance between triangulations after comp: {dist_comp}")
+    print(f"do the flips lead to b {check_if_flips_is_b(a,b,stages_of_flips_comp)}")
     Draw_distance(dist_comp, stages_of_flips_comp, a,b,points_list)
-    Draw_Manager_Components(manager)
 if __name__ == "__main__":
     main()

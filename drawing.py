@@ -6,8 +6,7 @@ from cgshop2026_pyutils.geometry import draw_edges
 from cgshop2026_pyutils.geometry import FlippableTriangulation, draw_flips 
 from cgshop2026_pyutils.geometry import draw_edges
 import networkx as nx
-import math
-from c_builder import ConnectedDirectedComponent, DynamicGraphManager
+from Components import ConnectedDirectedComponent, DynamicGraphManager
 def Draw_distance(dist: int,
                   stages_of_flips: list[list[tuple[int, int]]],
                   a: FlippableTriangulation,

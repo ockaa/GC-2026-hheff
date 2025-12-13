@@ -334,3 +334,47 @@ def FlipInThisTriangulation(a: FlippableTriangulation, e_before: tuple,e_after: 
         pass
 
     return False
+
+def make_component_flip_stages(a:FlippableTriangulation, stages_of_flips: list[list[tuple[int,int]]])-> tuple[list[list[tuple[int,int]]] , int]:
+    a_clone2 = a.fork()
+    manager = MakeComponents(a, stages_of_flips)
+    stages_of_flips_comp = list(list())
+    global_layers = []
+
+    for comp in manager.get_all_components():
+        comp_layers = comp.get_layers_topological()
+        
+        for depth, layer in enumerate(comp_layers):
+            while len(global_layers) <= depth:
+                global_layers.append([])
+            
+            global_layers[depth].extend(layer)
+
+    print(f"Total parallel stages: {len(global_layers)}")
+    dist_comp = len(global_layers)
+    for i, layer in enumerate(global_layers):
+
+        stages_of_flips_comp.append(list())
+        
+        for node_id in layer:
+            edge_to_flip = node_id[0]
+            
+            try:
+                a_clone2.add_flip(edge_to_flip)
+
+                stages_of_flips_comp[i].append(edge_to_flip) 
+            except ValueError:
+
+                pass
+        
+        a_clone2.commit()
+    return stages_of_flips_comp,dist_comp
+def check_if_flips_is_b(a:FlippableTriangulation,b:FlippableTriangulation, stages_of_flips: list[list[tuple[int,int]]])->bool:
+    a_clone = a.fork()
+    for stage in stages_of_flips:
+        for edge in stage:
+            a_clone.add_flip(edge)
+        a_clone.commit()
+    if(a_clone.__eq__(b)):
+        return True
+    return False

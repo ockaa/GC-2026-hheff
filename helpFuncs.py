@@ -4,7 +4,6 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import random
 from collections import defaultdict
-
 from cgshop2026_pyutils.io import read_instance
 from cgshop2026_pyutils.geometry import FlippableTriangulation, draw_edges, Point 
 from cgshop2026_pyutils.schemas import CGSHOP2026Instance
@@ -37,3 +36,4 @@ def new_triangles(a: FlippableTriangulation, e: tuple[int,int]):
     t2 = [normalize_edge(v,w), normalize_edge(w,z), normalize_edge(z,v)]
     
     return t1, t2
+
