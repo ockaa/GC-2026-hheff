@@ -4,7 +4,6 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import random
 from collections import defaultdict
-
 from cgshop2026_pyutils.io import read_instance
 from cgshop2026_pyutils.geometry import FlippableTriangulation, draw_edges, Point 
 from cgshop2026_pyutils.schemas import CGSHOP2026Instance
@@ -37,3 +36,67 @@ def new_triangles(a: FlippableTriangulation, e: tuple[int,int]):
     t2 = [normalize_edge(v,w), normalize_edge(w,z), normalize_edge(z,v)]
     
     return t1, t2
+
+
+def reconstruct_triangulation_sequence(a: FlippableTriangulation, flips_by_layer):
+    """
+    a: FlippableTriangulation – starting triangulation
+    flips_by_layer: list of sets of edges to flip at each layer
+    returns: list of triangulations from A to B(B as dest trian) following the layers
+    """
+
+    current = a.fork()
+    sequence = [current.fork()]   #put a in the start
+
+    for layer_flips in flips_by_layer:
+        for e in layer_flips: #do all flips that layer
+            try:
+                current.add_flip(e)
+            except ValueError:
+                continue
+        current.commit() #commit the flips
+        sequence.append(current.fork()) #add it
+
+    return sequence
+
+
+def independent_set(a: FlippableTriangulation, edges):
+    try:
+        a_tmp = a.fork()
+        for e in edges:
+            a_tmp.add_flip(e)
+        a_tmp.commit()
+        return True
+    except ValueError:
+        return False
+
+def maximal_independent_subsets(a: FlippableTriangulation, candidates):
+    """
+    מחזירה רשימה של תתי-קבוצות בלתי תלויות מקסימליות
+    """
+    subsets = []
+
+    for start in candidates:
+        current = {start}
+        a_tmp = a.fork()
+        try:
+            a_tmp.add_flip(start)
+            a_tmp.commit()
+        except ValueError:
+            continue
+
+        for e in candidates:
+            if e in current:
+                continue
+            try:
+                a_try = a_tmp.fork()
+                a_try.add_flip(e)
+                a_try.commit()
+                current.add(e)
+                a_tmp = a_try
+            except ValueError:
+                continue
+
+        subsets.append(current)
+
+    return subsets
