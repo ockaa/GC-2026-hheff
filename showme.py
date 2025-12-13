@@ -11,7 +11,7 @@ from c_builder2 import visualize_flip_components
 from c_builder2 import visualize_components 
 #from c_builder2 import full_build_components
 INSTANCE_FOLDER = "benchmark_instances"
-INSTANCE_FILENAME = "woc-205-tsplib-8058c7cb.json" 
+INSTANCE_FILENAME = "random_instance_73_160_10.json" 
 
 def main():
     # 1. Locate and Load the Instance
@@ -45,7 +45,7 @@ def main():
     n = len(instance.triangulations)
     dist = [[0] * n for _ in range(n)]
    
-    for i in range(n):
+    for i in range(5,n):
         for j in range(i + 1, n): 
         
 
@@ -55,7 +55,7 @@ def main():
             b = FlippableTriangulation.from_points_edges(points_list, instance.triangulations[j])
             min_dist = 4000 
             min_stage = set()
-            for k in range(10):
+            for k in range(4):
                  dist, stages_of_flips , stages_of_flips_with_partner = distance(a, b)
                  print(f"   found distance {dist}")
                  if min_dist > dist:
