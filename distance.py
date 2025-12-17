@@ -11,6 +11,7 @@ from helpFuncs import normalize_edge , new_triangles,diff,isFree
 edge_attempt_count = defaultdict(int)
 def distance(a: FlippableTriangulation,
              b: FlippableTriangulation):
+    edge_attempt_count.clear()
     k = 16
     dist =0
     troubles_in_paradise = 0
