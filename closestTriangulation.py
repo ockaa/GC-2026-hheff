@@ -13,26 +13,49 @@ from c_builder import fromCompToFlips
 def caculate_all_dis(triangulations: list[FlippableTriangulation]) -> list[list[tuple[int,set,set]]]:
     n = len(triangulations)
     dist: list[list[tuple[int,set,set]]] = [[(0,set(),set()) for _ in range(n)] for _ in range(n)]  # <-- שונה
-
+    max_num = 401
     for i in range(n):
         for j in range(i + 1, n): 
             
             min_distance_result = (0, set(), set())
             print(f"now calculate for t{i} and t{j}")
-            min_d = 251
-            for k in range(5):
-                nd = 251
-                while nd == 251:
-                    nd,stageflips,l2 = distance(triangulations[i], triangulations[j])
-                    if nd < 251:
-                        d , s = fromCompToFlips(triangulations[i],stageflips)
-                        distance_result = d,s,l2
+            min_d = max_num
+            
+            for k in range(10):
+                nd = max_num
+                d = 200
+                p =0
+                while nd == max_num:
+                    nd1,stageflips,l1 = distance(triangulations[i], triangulations[j])
+                    nd2,stageflips2,l2 = distance(triangulations[j], triangulations[i])
+                    if(nd1<nd2): 
+                        nd = nd1
+                    else: 
+                        nd = nd2
+                    if nd < max_num:
+                        d1 , s1 = fromCompToFlips(triangulations[i],stageflips)
+                        d2 , s2 = fromCompToFlips(triangulations[j],stageflips2)
+                        if(d1 < d2):
+                            d,s,l = d1,s1,l1
+                        else:
+                            d,s,l = d2,s2,l2
+                        distance_result = d,s,l
                         if min_d > d :
                             min_d = d
                             min_distance_result = distance_result
+                        print(f"  found length : {d}")
+                    p+=1
+                    if p > 30 and min_d < 23:
+                        print("  * took to long skip")
+                        break
+                    if p > 100:
+                        distance_result = d,s,l
+                        min_distance_result = distance_result
+                        print("  * couldent find distance")
+                        break
                     
 
-
+            print(f"  {k+1}.found min : {min_d}")
             dist[i][j] = min_distance_result  
             dist[j][i] = min_distance_result  
 
@@ -100,26 +123,39 @@ def closest_to_target(triangulations: list[FlippableTriangulation],
     distance_results = []
 
     for i, T in enumerate(triangulations):
-        print(f"Checking distance between target and T{i}")
+        print(f" {i+1}.Checking distance between target and T{i}")
 
         min_d = float("inf")
         best_result = None
 
-        for _ in range(repeats):
-            nd,stageflips,l2 = distance(T, target)
-            d , s = fromCompToFlips(T,stageflips)
-            distance_result = d,s,l2
-            if d < min_d:
+        for k in range(repeats):
+            nd1,stageflips,l1 = distance(T, target)
+            nd2,stageflips2,l2 = distance(target,T)
+            if(nd1<nd2): 
+                nd = nd1
+            else: 
+                nd = nd2
+            
+            d1 , s1 = fromCompToFlips(T,stageflips)
+            d2 , s2 = fromCompToFlips(target,stageflips2)
+            if(d1 < d2):
+                d,s,l = d1,s1,l1
+            else:
+                d,s,l = d2,s2,l2
+            distance_result = d,s,l
+            print(f"   {k+1}.found length : {d}")
+            if min_d > d :
                 min_d = d
                 best_result = distance_result
-
+        print(f"   found min : {min_d}")
+        
         distance_results.append(best_result)
 
         if min_d < best_dist:
             best_dist = min_d
             best_index = i
             best_triang = T
-
+    print(f" found min : {best_dist}")
     return best_dist, best_triang, best_index, distance_results
 
 
@@ -142,6 +178,7 @@ def median_triangulation(triangulations):
 
     # עכשיו עוברים על שאר הטריאנגולציות
     for i in range(2, len(triangulations)):
+        print(f"Adding new trag : T{i}")
         T = triangulations[i]
 
         # 1) בטווח בין M לבין N (העוגן הקודם) —

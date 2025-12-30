@@ -11,7 +11,7 @@ from c_builder2 import visualize_flip_components
 from c_builder2 import visualize_components 
 #from c_builder2 import full_build_components
 INSTANCE_FOLDER = "benchmark_instances"
-INSTANCE_FILENAME = "random_instance_73_160_10.json" 
+INSTANCE_FILENAME = "woc-205-tsplib-8058c7cb.json" 
 
 def main():
     # 1. Locate and Load the Instance
@@ -45,7 +45,7 @@ def main():
     n = len(instance.triangulations)
     dist = [[0] * n for _ in range(n)]
    
-    for i in range(5,n):
+    for i in range(n):
         for j in range(i + 1, n): 
         
 
@@ -57,7 +57,10 @@ def main():
             min_stage = set()
             for k in range(4):
                  dist, stages_of_flips , stages_of_flips_with_partner = distance(a, b)
-                 print(f"   found distance {dist}")
+                 if dist < 401:
+                     print(f"   found distance {dist}")
+                 else:
+                     print("  couldnt find distance")
                  if min_dist > dist:
                      min_dist = dist
                      min_stage = stages_of_flips
@@ -68,7 +71,7 @@ def main():
             
             #visualize_flip_components(comp_info)
            # visualize_components(dsu, comp_info, Trings, stages_of_flips_with_partner)
-            # Draw_distance(min_dist, min_stage, a, b,points_list)
+            #Draw_distance(min_dist, min_stage, a, b,points_list)
             #components_dict, comp_deps, deps, flip_to_comp = build_flip_components(stages_of_flips_with_partner,a)
 
             #visualize_all_flips_graph(components_dict, deps, flip_to_comp)

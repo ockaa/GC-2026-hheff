@@ -288,8 +288,7 @@ def MakeComponents(a: FlippableTriangulation,
             # only the ones who affect the possiblity of it to flip
             relevant_edges = affecting_edges - {partner}
 
-            if e == (50, 71):
-                print(f"    (50, 71) dependent on {relevant_edges}")
+          
 
             for edge2 in relevant_edges:
                 if edge2 in edge_creator_map:
@@ -299,8 +298,7 @@ def MakeComponents(a: FlippableTriangulation,
                         # If edge2 was created by a previous flip, record the dependency
                         AllComponents.add_edge(creator, current_id)
                         
-                        if e == (50, 71):
-                            print(f"        (50, 71) linked to {creator}")
+                     
 
             
             try:
@@ -358,7 +356,7 @@ def fromCompToFlips(a: FlippableTriangulation,stages_of_flips):
                     global_layers[depth].extend(layer)
 
             # 2. Execute the Global Layers sequentially
-            print(f"  new dist after comp: {len(global_layers)}")
+           # print(f"  new dist after comp: {len(global_layers)}")
             dist_comp = len(global_layers)
             for i, layer in enumerate(global_layers):
                 # print(f"Processing Global Layer {i} with {len(layer)} flips...")

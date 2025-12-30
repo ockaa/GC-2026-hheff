@@ -9,7 +9,7 @@ from closestTriangulation import closestTringulation , median_triangulation
 
 #from c_builder2 import full_build_components
 INSTANCE_FOLDER = "benchmark_instances"
-INSTANCE_FILENAME = "random_instance_188_40_10.json" 
+INSTANCE_FILENAME = "woc-235-tsplib-8c89c7cb.json" 
 
 def main():
     # 1. Locate and Load the Instance
@@ -49,14 +49,14 @@ def main():
 # חישוב המרחקים והטריאנגולציה הקרובה
     #min_tiang = median_triangulation(triangs)
     #triangs.append(min_tiang)
-    total_dist, closest_tri, dist_matrix,min_i = closestTringulation(triangs,True)
+    total_dist, closest_tri, dist_matrix,min_i = closestTringulation(triangs)#,True)
     print(f"closest dist id {total_dist}")
     # שמירת הכל ל-PDF
     name_without_ext = Path(INSTANCE_FILENAME).stem
 
 # יצירת שם חדש עם סיומת PDF
     pdf_filename = f"{name_without_ext}.pdf"
-    Save_All_To_PDF(triangs, points_list, dist_matrix, min_i,pdf_filename,True)
+    Save_All_To_PDF(triangs, points_list, dist_matrix, min_i,pdf_filename)#,True)
 
     #print(f"Closest triangulation has total distance {c}")
 
