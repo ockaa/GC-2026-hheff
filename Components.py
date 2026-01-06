@@ -1,6 +1,6 @@
 import networkx as nx
 from itertools import combinations
-from collections import defaultdict, deque
+from collections import Counter, defaultdict, deque
 from cgshop2026_pyutils.io import read_instance
 from cgshop2026_pyutils.geometry import FlippableTriangulation, draw_edges, Point 
 from cgshop2026_pyutils.schemas import CGSHOP2026Instance
@@ -20,6 +20,94 @@ class ConnectedDirectedComponent:
         if initial_node is not None:
             self.nodes.add(initial_node)
             self._heads.add(initial_node)
+    def get_critical_path_info(self) -> tuple[int, list]:
+        """
+        Helper function: Returns (max_length, list_of_heads) for this component.
+        Refactored to allow the Manager to compare lengths across components.
+        """
+        if not self.nodes:
+            return 0, []
+
+        memo_height = {}
+
+        def get_height(u):
+            if u in memo_height:
+                return memo_height[u]
+            
+            # Base case: No children
+            if not self.graph[u]:
+                memo_height[u] = 1
+                return 1
+            
+            # Recursive step
+            max_child_height = 0
+            for v in self.graph[u]:
+                h = get_height(v)
+                if h > max_child_height:
+                    max_child_height = h
+            
+            memo_height[u] = 1 + max_child_height
+            return 1 + max_child_height
+
+        max_len = -1
+        critical_heads = []
+        
+        for head in self._heads:
+            length = get_height(head)
+            
+            if length > max_len:
+                max_len = length
+                critical_heads = [head]
+            elif length == max_len:
+                critical_heads.append(head)
+                
+        return max_len, critical_heads
+    def remove_node_safe(self, node) -> bool:
+        """
+        Removes a node ONLY if it is a Head (first) or a Tail (last).
+        Returns True if successful, False if the node is "in the middle".
+        """
+        if node not in self.nodes:
+            return False
+
+        # Check conditions
+        # 1. Is it a Head? (No incoming edges / parents)
+        is_head = node in self._heads
+        
+        # 2. Is it a Tail? (No outgoing edges / children)
+        is_tail = node not in self.graph or len(self.graph[node]) == 0
+
+        # If it's neither, it's a middle node -> ABORT
+        if not is_head and not is_tail:
+            return False
+
+        # --- Proceed with Removal ---
+
+        # 1. Handle Outgoing Edges (If it's a Head being removed)
+        # Note: If we remove a Head that has children, those children 
+        # technically lose their dependency. In your geometric context, 
+        # you might want to cascade delete them, but for now, we just 
+        # update the graph topology so they become new Heads.
+        if node in self.graph:
+            for child in self.graph[node]:
+                self.reverse_graph[child].remove(node)
+                if not self.reverse_graph[child]:
+                    self._heads.add(child)
+            del self.graph[node]
+
+        # 2. Handle Incoming Edges (If it's a Tail being removed)
+        if node in self.reverse_graph:
+            for parent in self.reverse_graph[node]:
+                self.graph[parent].remove(node)
+                # Parent doesn't change head status
+            del self.reverse_graph[node]
+
+        # 3. Cleanup Metadata
+        self.nodes.remove(node)
+        if node in self._heads:
+            self._heads.remove(node)
+            
+        return True
     def get_layers_topological(self) -> list[list[tuple]]:
         """
         Returns layers where a node only appears after ALL its dependencies 
@@ -166,12 +254,116 @@ class ConnectedDirectedComponent:
             current_layer_nodes = next_layer_nodes
             
         return layers
+    def get_critical_heads(self) -> list[tuple]:
+        """
+        Returns ONLY the Heads that start the longest possible chains 
+        in this component.
+        """
+        if not self.nodes:
+            return []
+
+        # 1. Initialize Memoization Table
+        # Maps node -> length of longest chain starting at this node
+        memo_height = {}
+
+        # 2. Define DFS helper to calculate height
+        def get_height(u):
+            if u in memo_height:
+                return memo_height[u]
+            
+            # Base case: No children (Sink)
+            if not self.graph[u]:
+                memo_height[u] = 1
+                return 1
+            
+            # Recursive step: 1 + max height of children
+            max_child_height = 0
+            for v in self.graph[u]:
+                h = get_height(v)
+                if h > max_child_height:
+                    max_child_height = h
+            
+            memo_height[u] = 1 + max_child_height
+            return 1 + max_child_height
+
+        # 3. Calculate Height for ALL Heads
+        # We only need to start DFS from Heads because all nodes are 
+        # reachable from some head.
+        max_len = -1
+        critical_heads = []
+        
+        for head in self._heads:
+            length = get_height(head)
+            
+            if length > max_len:
+                max_len = length
+                critical_heads = [head] # Found a new longest path, reset list
+            elif length == max_len:
+                critical_heads.append(head) # Tied for longest path
+                
+        return critical_heads
 class DynamicGraphManager:
     def __init__(self):
         # Maps Node ID -> Component Instance
         self.node_map = {}
         # Keep track of unique component objects
         self.components = set()
+    def get_first(self) -> list[tuple]:
+        """
+        Returns all heads that start the globally longest paths across ALL components.
+        Example: 
+           Comp1: A->B->C (Len 3)
+           Comp2: D->E->F (Len 3)
+           Comp3: G->H    (Len 2)
+           Returns: [A, D]
+        """
+        global_max_len = -1
+        global_heads = []
+
+        for comp in self.components:
+            # Get length and heads for this specific component
+            length, heads = comp.get_critical_path_info()
+            
+            if length > global_max_len:
+                # Found a new longest path, discard previous winners
+                global_max_len = length
+                global_heads = heads[:] 
+            elif length == global_max_len:
+                # Tie for longest path, add these heads to the list
+                global_heads.extend(heads)
+                
+        return global_heads
+    def get_heads(self) -> set[tuple[int, int]]:
+        """
+        Returns a set of all flips that are currently 'Heads' (no un-executed dependencies)
+        across ALL components.
+        """
+        all_heads = set()
+        for comp in self.components:
+            all_heads.update(comp.get_heads())
+        return all_heads
+    def unlink_flip(self, node):
+        """
+        Attempts to remove a flip. 
+        Raises an error or returns False if the flip is in the middle of a chain.
+        """
+        if node not in self.node_map:
+            return False # Node doesn't exist
+
+        comp = self.node_map[node]
+        success = comp.remove_node_safe(node)
+
+        if success:
+            # Clean up manager reference
+            del self.node_map[node]
+            # Garbage collect empty components
+            if not comp.nodes:
+                self.components.remove(comp)
+            return True
+        else:
+            # Depending on your preference, you can print a warning or raise an error
+            print(f"Refused to unlink flip {node}: It is a middle dependency.")
+            return False
     def get_all_components(self) -> list['ConnectedDirectedComponent']:
             """Returns a list of all active connected components."""
             return list(self.components)
@@ -235,6 +427,27 @@ class DynamicGraphManager:
         
     def get_component(self, node):
         return self.node_map.get(node)
+    def get_longest_chain_component(self):
+        """
+        Returns the component with the longest critical path (maximum number of 
+        topological layers) and its depth.
+        
+        Returns:
+            (Component, int): The component instance and the number of layers.
+        """
+        longest_component = None
+        max_depth = 0
+
+        for comp in self.components:
+            # Calculate the topological layers for this component
+            layers = comp.get_layers_topological()
+            depth = len(layers)
+            
+            if depth > max_depth:
+                max_depth = depth
+                longest_component = comp
+                
+        return longest_component, max_depth
 def MakeComponents(a: FlippableTriangulation,
                    stages_of_flips: list[list[tuple[int, int]]]):
     
@@ -260,8 +473,8 @@ def MakeComponents(a: FlippableTriangulation,
         for e in FlipList:
             
             e = normalize_edge(*e)
-            if e == (9,30):
-                print(a_working.get_flip_partner(e))
+            #if e == (9,30):
+                #print(a_working.get_flip_partner(e))
 
             
             # We calculate the partner edge to use in the ID
@@ -288,8 +501,8 @@ def MakeComponents(a: FlippableTriangulation,
             # only the ones who affect the possiblity of it to flip
             relevant_edges = affecting_edges - {partner}
 
-            if e == (50, 71):
-                print(f"    (50, 71) dependent on {relevant_edges}")
+            #if e == (50, 71):
+             #   print(f"    (50, 71) dependent on {relevant_edges}")
 
             for edge2 in relevant_edges:
                 if edge2 in edge_creator_map:
@@ -299,8 +512,8 @@ def MakeComponents(a: FlippableTriangulation,
                         # If edge2 was created by a previous flip, record the dependency
                         AllComponents.add_edge(creator, current_id)
                         
-                        if e == (50, 71):
-                            print(f"        (50, 71) linked to {creator}")
+                        #if e == (50, 71):
+                        #    print(f"        (50, 71) linked to {creator}")
 
             
             try:
@@ -378,3 +591,137 @@ def check_if_flips_is_b(a:FlippableTriangulation,b:FlippableTriangulation, stage
     if(a_clone.__eq__(b)):
         return True
     return False
+from collections import Counter
+import copy
+
+import copy
+from helpFuncs import normalize_edge
+
+def optimize_best_triangulation(triangs_stages_flips: list[list[list[tuple[int,int]]]], opt, triangs: list[FlippableTriangulation]) -> tuple:
+    """
+    Optimizes the center triangulation using a simple greedy loop approach.
+    """
+    """
+    for i in range(len(triangs_stages_flips)):
+        if check_if_flips_is_b(opt, triangs[i], triangs_stages_flips[i]) == False:
+            print(f"Warning: One of the flip sequences does not lead to the target triangulation. {i}")
+        else:
+            print(f"Flip sequence {i} verified to lead to target triangulation.")
+    """
+    current_center = opt.fork()
+    
+    # Deep copy to protect the original data during the process
+    current_stages_list = copy.deepcopy(triangs_stages_flips)
+    n = len(triangs_stages_flips)
+    last_improvement_iteration = 0
+    iteration = 0
+    max_length = max(len(stages) for stages in current_stages_list)
+    # Track the edges created by the last move to prevent immediate undo loops
+    last_created_edges = set()
+
+    while last_improvement_iteration < max_length*n: #need ot iterate until no improvement in all triangs
+        print("--- Optimization Round ---")
+        
+        total_dist_before = 0
+        total_dist_after = 0
+        current = MakeComponents(current_center, current_stages_list[iteration%n]) # need to choose one
+        heads = current.get_first() # instead of these need to take first layer nodes of longest chains
+
+        #create a new center with the flips of the first layer applied
+        print(f"Trying flips: {heads}")
+        if (len(heads) == 0):
+            print("No heads to flip, skipping iteration.")
+            iteration += 1
+            last_improvement_iteration += 1
+            continue
+            
+        center_try = current_center.fork()
+        for ((u,v),(ut,vt),i) in heads:
+            center_try.add_flip((u,v))
+        center_try.commit()
+
+        new_stages_list = []
+        #loops and checkes new distance
+        for stages in current_stages_list:
+            tree = MakeComponents(current_center.fork(), stages)
+            _, depth = tree.get_longest_chain_component()
+            total_dist_before += depth
+            stagescopy = copy.deepcopy(stages)
+            headscurrent = tree.get_heads()
+
+            active_head_edges = { node[0] for node in headscurrent }
+            #delete or add the flips or oppisites
+            for full_node_id in heads:
+                ((u, v), _, _) = full_node_id
+
+                # Check if this edge is wanted by the current target
+                if (u, v) in active_head_edges:
+
+                    
+                    found_and_removed = False
+                    
+                    # We search layers in order (0, 1, 2...)
+                    for idx, layer in enumerate(stagescopy):
+                        if (u, v) in layer:
+                            # 1. Remove the flip
+                            layer.remove((u, v))
+                            
+                            # 2. Cleanup: If the layer is now empty, remove the list itself
+                            if not layer:
+                                stagescopy.pop(idx)
+                            
+                            # 3. CRITICAL: Stop searching! We only delete the first one.
+                            found_and_removed = True
+                            break 
+                    
+                    if not found_and_removed:
+                        print(f"Warning: Flip {(u,v)} expected but not found in stages.")
+
+                else:
+                    partner = current_center.get_flip_partner((u, v))
+                    stagescopy.insert(0, [partner])
+
+            treeafter = MakeComponents(center_try, stagescopy)
+            _, depth = treeafter.get_longest_chain_component()
+            l = make_component_flip_stages(center_try, stagescopy)[0]
+            new_stages_list.append(l)
+            total_dist_after += depth
+        
+        # Determine strictness of improvement
+        is_strict_improvement = total_dist_after < total_dist_before
+        is_sideways_move = total_dist_after == total_dist_before
+        
+        # Extract the edges we just proposed to flip (to check against history)
+        proposed_edges = { h[0][0] for h in heads }
+        
+        # Check if we are simply reversing the previous step (Cycle Detection)
+        # If the edges we want to flip now are exactly the edges we created in the last step, it's a loop.
+        is_reversal = (proposed_edges == last_created_edges)
+
+        iteration += 1
+        
+        # We allow commit if Strict Improvement OR (Sideways Move AND Not a Reversal)
+        if is_strict_improvement or (is_sideways_move and not is_reversal):
+            
+            if is_strict_improvement:
+                print(f"Improved total distance: {total_dist_before} -> {total_dist_after}")
+                last_improvement_iteration = 0 # Reset termination counter only on strict gains
+            else:
+                print(f"Sideways move (exploring plateau): {total_dist_before} -> {total_dist_after}")
+                # We do NOT reset last_improvement_iteration here. 
+                # This ensures we don't get stuck in a plateau forever.
+                last_improvement_iteration += 1
+                iteration -=1
+
+            current_center = center_try
+            current_stages_list = new_stages_list
+            
+            # Update the history for cycle detection
+            # We store the *result* of the flips (the new diagonals), which correspond to h[0][1] in your tuple structure
+            last_created_edges = { h[0][1] for h in heads }
+            
+        else:
+            print(f"No improvement (or cycle detected): {total_dist_before} -> {total_dist_after}")
+            last_improvement_iteration += 1
+            
+    return current_center, current_stages_list

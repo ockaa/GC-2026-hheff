@@ -59,14 +59,15 @@ def distance(a: FlippableTriangulation,
         flips_with_partner_by_layer.append(setFlipsWithPartner)
         dist+=1
 
-        if(dist > 250):
-            print(f"250 itertion it too much itteratio we are goin to stop")
+        if(dist > 450):
+            print(f"450 itertion it too much itteratio we are goin to stop")
             break
 
-    if(dist <= 250):
+    if(dist <= 450):
         print(f"end distance is {dist}")
     else:
         print(f"couldnt find end distance sorry")
+        return None, None, None
     return dist , flips_by_layer , flips_with_partner_by_layer
 def Huristic(
     a: FlippableTriangulation,
