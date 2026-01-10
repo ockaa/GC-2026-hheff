@@ -55,9 +55,12 @@ def main():
             b = FlippableTriangulation.from_points_edges(points_list, instance.triangulations[j])
             min_dist = 4000 
             min_stage = set()
-            for k in range(10):
+            for k in range(4):
                  dist, stages_of_flips , stages_of_flips_with_partner = distance(a, b)
-                 print(f"   found distance {dist}")
+                 if dist < 401:
+                     print(f"   found distance {dist}")
+                 else:
+                     print("  couldnt find distance")
                  if min_dist > dist:
                      min_dist = dist
                      min_stage = stages_of_flips
@@ -68,7 +71,7 @@ def main():
             
             #visualize_flip_components(comp_info)
            # visualize_components(dsu, comp_info, Trings, stages_of_flips_with_partner)
-            # Draw_distance(min_dist, min_stage, a, b,points_list)
+            #Draw_distance(min_dist, min_stage, a, b,points_list)
             #components_dict, comp_deps, deps, flip_to_comp = build_flip_components(stages_of_flips_with_partner,a)
 
             #visualize_all_flips_graph(components_dict, deps, flip_to_comp)

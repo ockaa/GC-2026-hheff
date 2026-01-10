@@ -7,10 +7,12 @@ from collections import defaultdict
 from cgshop2026_pyutils.io import read_instance
 from cgshop2026_pyutils.geometry import FlippableTriangulation, draw_edges, Point 
 from cgshop2026_pyutils.schemas import CGSHOP2026Instance
-from helpFuncs import normalize_edge , new_triangles,diff,isFree
+from helpFuncs import normalize_edge , new_triangles,diff,isFree,maximal_independent_subsets
 edge_attempt_count = defaultdict(int)
 def distance(a: FlippableTriangulation,
              b: FlippableTriangulation):
+    edge_attempt_count.clear()
+
     k = 16
     dist =0
     troubles_in_paradise = 0
@@ -49,23 +51,31 @@ def distance(a: FlippableTriangulation,
         setFlips |= setFlips_h
         setFlipsWithPartner |= flips_h
         
-        setChangedEdges -= toRemove
-        setChangedEdges |= toAdd
+        #setChangedEdges -= toRemove
+        
+        #setChangedEdges |= toAdd
         lastFlips = setFlips.copy()
 
         a_working.commit() # we commite the flips in the end
         flips_by_layer.append(setFlips)
         flips_with_partner_by_layer.append(setFlipsWithPartner)
         dist+=1
+        setChangedEdges = {
+            normalize_edge(*e)
+            for e in a_working.get_edges()
+            if normalize_edge(*e) not in set_b
+        }
 
-        if(dist > 250):
-            print(f"250 itertion it too much itteratio we are goin to stop")
+     #   print("still diff:", len(set(a_working.get_edges()) - set_b))
+      
+      #  print("changedEdges:", len(setChangedEdges))
+        if(dist > 400):
+            #print(f"250 itertion it too much itteratio we are goin to stop")
             break
 
-    if(dist <= 250):
-        print(f"end distance is {dist}")
-    else:
-        print(f"couldnt find end distance sorry")
+    #if(dist <= 400):
+        #print(f"  end distance is {dist}")
+
     return dist , flips_by_layer , flips_with_partner_by_layer
 def Huristic(
     a: FlippableTriangulation,
@@ -87,6 +97,8 @@ def Huristic(
             edge_by_score.append((e, score))
         except ValueError:
             continue
+    if not edge_by_score:
+      return set(), set(), set(), set()
 
     best_edge, best_score = max(edge_by_score, key=lambda x: x[1])
 
@@ -121,7 +133,6 @@ def Huristic(
                     pass
 
     return to_Flip, toRemove, toAdd ,setFlipsWithPartner
-
 def blocking_edges(a: FlippableTriangulation, 
                    set_b: set[tuple[int, int]],
                    edges: set[tuple[int,int]], 
@@ -205,5 +216,3 @@ def blocking_edges(a: FlippableTriangulation,
         recursive_score = blocking_edges(a_temp, set_b, free_edges, k - 1)
         score += recursive_score 
     return score
-
-
