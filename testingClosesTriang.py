@@ -5,11 +5,11 @@ from drawing import Draw_distance  ,Draw_All_Triangulation_With_Distances,Save_A
 from cgshop2026_pyutils.io import read_instance
 from cgshop2026_pyutils.geometry import FlippableTriangulation, draw_edges, Point 
 from cgshop2026_pyutils.schemas import CGSHOP2026Instance
-from closestTriangulation import closestTringulation , median_triangulation
+from closestTriangulation import closestTringulation , median_triangulation,dynamic_median_triangulation
 
 #from c_builder2 import full_build_components
 INSTANCE_FOLDER = "benchmark_instances"
-INSTANCE_FILENAME = "woc-235-tsplib-8c89c7cb.json" 
+INSTANCE_FILENAME = "random_instance_995_320_10.json" 
 
 def main():
     # 1. Locate and Load the Instance
@@ -48,15 +48,17 @@ def main():
     # עכשיו אפשר לשלוח לפונקציה
 # חישוב המרחקים והטריאנגולציה הקרובה
     #min_tiang = median_triangulation(triangs)
+    #min_tiang = dynamic_median_triangulation(triangs)
+
     #triangs.append(min_tiang)
-    total_dist, closest_tri, dist_matrix,min_i = closestTringulation(triangs)#,True)
+    total_dist, closest_tri, dist_matrix,min_i = closestTringulation(triangs,True)
     print(f"closest dist id {total_dist}")
     # שמירת הכל ל-PDF
     name_without_ext = Path(INSTANCE_FILENAME).stem
 
 # יצירת שם חדש עם סיומת PDF
-    pdf_filename = f"{name_without_ext}.pdf"
-    Save_All_To_PDF(triangs, points_list, dist_matrix, min_i,pdf_filename)#,True)
+    pdf_filename = f"{name_without_ext}_snip.pdf"
+    Save_All_To_PDF(triangs, points_list, dist_matrix, min_i,pdf_filename,True)
 
     #print(f"Closest triangulation has total distance {c}")
 

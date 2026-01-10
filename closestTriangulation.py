@@ -2,6 +2,8 @@ import os
 from pathlib import Path
 import matplotlib.pyplot as plt
 from distance import distance
+from itertools import combinations
+import random
 from cgshop2026_pyutils.io import read_instance
 from cgshop2026_pyutils.geometry import FlippableTriangulation, draw_edges, Point 
 from cgshop2026_pyutils.schemas import CGSHOP2026Instance
@@ -193,3 +195,94 @@ def median_triangulation(triangulations):
         N = T
 
     return M
+
+
+
+
+# ===========================
+# פונקציה שמחשבת את הסכום של המרחקים לטריאנגולציות המקוריות
+# ===========================
+def total_distance(T: FlippableTriangulation, originals: list[FlippableTriangulation]) -> int:
+    return sum(distance(T, S)[0] for S in originals)  # [0] = length of distance
+
+# ===========================
+# פונקציה למציאת הזוג הכי רחוק בסט
+# ===========================
+def farthest_pair(triangulations: list[FlippableTriangulation]) -> tuple[int,int]:
+    max_d = -1
+    pair = (0, 1)
+    n = len(triangulations)
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            d, _, _ = distance(triangulations[i], triangulations[j])
+            if d > max_d:
+                max_d = d
+                pair = (i, j)
+    return pair
+
+# ===========================
+# מנסה להחליף זוג ב-midpoint אם זה משפר את הסכום לסט המקורי
+# מחזיר True אם בוצעה החלפה
+# ===========================
+def try_replace_pair(triangulations: list[FlippableTriangulation], originals: list[FlippableTriangulation]) -> bool:
+    i, j = farthest_pair(triangulations)
+    T1, T2 = triangulations[i], triangulations[j]
+
+    # יוצרים מועמד חדש (midpoint)
+    mid = closest_point_between(T1, T2, T2)  # או midpoint/T1→T2 path
+
+    score_mid = total_distance(mid, originals)
+    score_1   = total_distance(T1, originals)
+    score_2   = total_distance(T2, originals)
+
+    if score_mid < min(score_1, score_2):
+        # מחליפים את הטריאנגולציה הגרועה מבין השניים
+        if score_1 > score_2:
+            triangulations[i] = mid
+        else:
+            triangulations[j] = mid
+        return True
+
+    return False
+
+# ===========================
+# פונקציה שמבצעת כיווץ של הסט
+# ===========================
+def contract_triangulations(triangulations: list[FlippableTriangulation], max_iters: int = 20) -> list[FlippableTriangulation]:
+    originals = triangulations[:]   # הקלט המקורי לא משתנה
+    S = triangulations[:]
+
+    for _ in range(max_iters):
+        improved = try_replace_pair(S, originals)
+        if not improved:
+            break
+
+    return S
+
+# ===========================
+# בוחרים את הטריאנגולציה הכי מרכזית מתוך סט
+# ===========================
+def find_center(triangulations: list[FlippableTriangulation]) -> FlippableTriangulation:
+    best_T = None
+    best_score = float('inf')
+
+    for T in triangulations:
+        s = total_distance(T, triangulations)
+        if s < best_score:
+            best_score = s
+            best_T = T
+
+    return best_T
+
+# ===========================
+# האלגוריתם הדינמי המלא
+# ===========================
+def dynamic_median_triangulation(original_triangulations: list[FlippableTriangulation]) -> FlippableTriangulation:
+    # 1️⃣ כיווץ הסט על ידי החלפות midpoint
+    reduced_set = contract_triangulations(original_triangulations)
+
+    # 2️⃣ בוחרים את המרכז הסופי מתוך הסט המצומצם
+    center = find_center(reduced_set)
+
+    return center
