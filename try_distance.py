@@ -6,7 +6,7 @@ from collections import defaultdict, deque
 import networkx as nx
 from itertools import chain
 from cgshop2026_pyutils.geometry import FlippableTriangulation, draw_edges, Point 
-from helpFuncs import normalize_edge , new_triangles,diff,isFree,maximal_independent_subsets
+from helpFuncs import normalize_edge, new_triangles, diff, isFree, maximal_independent_subsets
 
 
 edge_attempt_count = defaultdict(int)
@@ -18,9 +18,8 @@ edge_attempt_count = defaultdict(int)
 def find_barrier_path_fast(shared_edges, max_time_ms=200):
     """
     מחזיר שכבת BFS שמפרידה את גרף הקשתות המשותפות בערך לחצי
-    (Separator מישורי)
     """
-    if not shared_edges:
+    if not shared_edges or len(shared_edges) < 50:
         return None
 
     point_to_edges = defaultdict(list)
@@ -35,7 +34,26 @@ def find_barrier_path_fast(shared_edges, max_time_ms=200):
                 adj[edges[i]].add(edges[j])
                 adj[edges[j]].add(edges[i])
 
+    # בדיקה שהגרף קשיר
+    if not adj:
+        return None
+    
     start = next(iter(shared_edges))
+    visited = {start}
+    queue = deque([start])
+    
+    while queue:
+        u = queue.popleft()
+        for v in adj[u]:
+            if v not in visited:
+                visited.add(v)
+                queue.append(v)
+    
+    # אם הגרף לא קשיר, אי אפשר למצוא separator
+    if len(visited) < len(shared_edges):
+        return None
+
+    # BFS לחיפוש separator
     level = {start: 0}
     q = deque([start])
     layers = defaultdict(list)
@@ -110,76 +128,41 @@ def split_by_connected_components(T, barrier_edges):
 
 
 # =========================================================
-# 3. תנאי מתי שווה לנסות לחלק
+# 3. בדיקה אם כדאי לנסות לחלק
 # =========================================================
 
-def should_split_triangulation(T1, T2, shared_edges):
-    total_edges = len(list(T1.get_edges()))
-    if total_edges < 300:
+def should_try_split(total_edges, shared_edges_count, layer_num):
+    """
+    מחליט אם כדאי לנסות לחלק בשכבה הנוכחית
+    """
+    # אל תנסה בשכבות הראשונות - גרף עדיין לא קשיר
+    if layer_num < 5:
         return False
-    if len(shared_edges) < 150:
+    
+    # צריך מספיק קשתות משותפות
+    if shared_edges_count < 150:
         return False
+    
+    # צריך שהטריאנגולציה תהיה מספיק גדולה
+    if total_edges < 500:
+        return False
+    
+    # נסה כל 15 שכבות (לא בכל שכבה כי זה יקר)
+    if layer_num % 15 != 0:
+        return False
+    
     return True
 
 
 # =========================================================
-# 4. distance עם ניסיון חלוקה
+# 4. distance עם בדיקת split דינמית
 # =========================================================
 
-def distance_with_split(T1, T2, distance_func):
-    list_T1 = set(normalize_edge(*e) for e in T1.get_edges())
-    list_T2 = set(normalize_edge(*e) for e in T2.get_edges())
-    shared_edges = list_T1 & list_T2
-
-    print("\n=== Split Analysis ===")
-    print(f"Total edges: {len(list_T1)}")
-    print(f"Shared edges: {len(shared_edges)}")
-
-    if not should_split_triangulation(T1, T2, shared_edges):
-        print("→ NOT splitting")
-        return distance_func(T1, T2)
-
-    print("→ Searching separator...")
-    barrier = find_barrier_path_fast(shared_edges)
-
-    if barrier is None:
-        print("→ No separator found")
-        return distance_func(T1, T2)
-
-    T1_l, T1_r = split_by_connected_components(T1, barrier)
-    T2_l, T2_r = split_by_connected_components(T2, barrier)
-
-    if T1_l is None or T2_l is None:
-        print("→ Split failed")
-        return distance_func(T1, T2)
-
-    print(f"✓ Split success: {len(T1_l)} | {len(T1_r)}")
-
-    pts = T1._flip_map.points
-
-    try:
-        TL1 = FlippableTriangulation.from_points_edges(pts, list(T1_l))
-        TR1 = FlippableTriangulation.from_points_edges(pts, list(T1_r))
-        TL2 = FlippableTriangulation.from_points_edges(pts, list(T2_l))
-        TR2 = FlippableTriangulation.from_points_edges(pts, list(T2_r))
-
-        d1, f1, p1 = distance_func(TL1, TL2)
-        d2, f2, p2 = distance_func(TR1, TR2)
-
-        return d1 + d2, f1 + f2, p1 + p2
-
-    except Exception as e:
-        print("→ Fallback:", e)
-        return distance_func(T1, T2)
-
-
-# =========================================================
-# 5. distance מהיר (active edges)
-# =========================================================
-
-def distance_optimized(a: FlippableTriangulation,
-                       b: FlippableTriangulation):
-
+def distance_with_dynamic_split(a: FlippableTriangulation,
+                                 b: FlippableTriangulation):
+    """
+    מריץ distance רגיל, אבל אחרי כל כמה שכבות בודק אם אפשר לחלק
+    """
     edge_attempt_count.clear()
     k = 16
     dist = 0
@@ -194,36 +177,86 @@ def distance_optimized(a: FlippableTriangulation,
     lastFlips = set()
 
     setChangedEdges = set(diff(lista, listb))
-    active_edges = setChangedEdges.copy()
 
     while not a_working.__eq__(b):
         if dist > 400:
             break
 
+        # בדיקה אם כדאי לנסות split - רק אם יש עוד הרבה עבודה
+        current_changed = len(setChangedEdges)
+        
+        # אל תנסה split אם כמעט סיימנו
+        if current_changed > 50:
+            current_shared = set(normalize_edge(*e) for e in a_working.get_edges()) & set_b
+            total_edges = len(list(a_working.get_edges()))
+            
+            if should_try_split(total_edges, len(current_shared), dist):
+                print(f"\n=== Layer {dist}: Attempting split ===")
+                print(f"Total edges: {total_edges}, Shared: {len(current_shared)}, Changed: {current_changed}")
+                
+                barrier = find_barrier_path_fast(current_shared)
+                
+                if barrier is not None:
+                    T1_l, T1_r = split_by_connected_components(a_working, barrier)
+                    T2_l, T2_r = split_by_connected_components(b, barrier)
+                    
+                    if T1_l is not None and T2_l is not None:
+                        print(f"✓ Split successful! Sizes: {len(T1_l)} | {len(T1_r)}")
+                        
+                        try:
+                            pts = a_working._flip_map.points
+                            TL1 = FlippableTriangulation.from_points_edges(pts, list(T1_l))
+                            TR1 = FlippableTriangulation.from_points_edges(pts, list(T1_r))
+                            TL2 = FlippableTriangulation.from_points_edges(pts, list(T2_l))
+                            TR2 = FlippableTriangulation.from_points_edges(pts, list(T2_r))
+                            
+                            # רקורסיה על שני החצאים
+                            d1, f1, p1 = distance_with_dynamic_split(TL1, TL2)
+                            d2, f2, p2 = distance_with_dynamic_split(TR1, TR2)
+                            
+                            # הוספת המרחק שכבר עברנו
+                            total_dist = dist + d1 + d2
+                            total_flips = flips_by_layer + f1 + f2
+                            total_partners = flips_with_partner_by_layer + p1 + p2
+                            
+                            print(f"✓ Total distance: {dist} (before split) + {d1} + {d2} = {total_dist}")
+                            # *** חשוב: return כאן כדי לא להמשיך את הלולאה! ***
+                            return total_dist, total_flips, total_partners
+                            
+                        except Exception as e:
+                            print(f"→ Split failed during construction: {e}")
+                    else:
+                        print(f"→ Split failed: couldn't separate into 2 components")
+                else:
+                    print(f"→ No separator found (graph not connected yet)")
+
+        # ===== שכבה רגילה - זה החלק שהיה חסר! =====
         setFlips = set()
         setFlipsWithPartner = set()
-        new_active = set()
+        toRemove = set()
+        toAdd = set()
 
-        for e in list(active_edges):
-            if e not in setChangedEdges:
-                continue
+        # הפיכות חופשיות
+        for e in set(setChangedEdges):
             try:
                 if isFree(a_working, set_b, e):
                     flip_rev = normalize_edge(*a_working.get_flip_partner(e))
                     a_working.add_flip(e)
+                    toRemove.add(e)
                     setFlips.add(e)
                     setFlipsWithPartner.add((e, flip_rev))
-                    new_active.add(flip_rev)
+                    edge_attempt_count[flip_rev] = 1 + edge_attempt_count[e]
             except ValueError:
                 continue
 
-        h_flips, h_pairs, h_active = Heuristic_optimized(
-            a_working, set_b, active_edges, setChangedEdges, lastFlips, k
+        # Heuristic
+        setFlips_h, toRemove_h, toAdd_h, flips_h = Huristic(
+            a_working, set_b, setChangedEdges, lastFlips, k
         )
-
-        setFlips |= h_flips
-        setFlipsWithPartner |= h_pairs
-        new_active |= h_active
+        toRemove |= toRemove_h
+        toAdd |= toAdd_h
+        setFlips |= setFlips_h
+        setFlipsWithPartner |= flips_h
 
         lastFlips = setFlips.copy()
         a_working.commit()
@@ -232,71 +265,18 @@ def distance_optimized(a: FlippableTriangulation,
         flips_with_partner_by_layer.append(setFlipsWithPartner)
         dist += 1
 
+        # עדכון setChangedEdges
         setChangedEdges = {
             normalize_edge(*e)
             for e in a_working.get_edges()
             if normalize_edge(*e) not in set_b
         }
 
-        if len(setChangedEdges) < 50:
-            active_edges = setChangedEdges.copy()
-        else:
-            active_edges = new_active & setChangedEdges
-
     return dist, flips_by_layer, flips_with_partner_by_layer
 
 
 # =========================================================
-# 6. Heuristic מתוקן (אין יותר None!)
-# =========================================================
-
-def Heuristic_optimized(a, set_b, active_edges, setChangedEdges, lastFlips, k):
-    edge_by_score = []
-    to_Flip = set()
-    setFlipsWithPartner = set()
-    new_active = set()
-
-    edges_to_check = active_edges & setChangedEdges
-
-    for e in edges_to_check:
-        try:
-            score = blocking_edges(a, set_b, {e}, k)
-            if score is not None:
-                edge_by_score.append((e, score))
-        except ValueError:
-            continue
-
-    if not edge_by_score:
-        return set(), set(), set()
-
-    best_edge, best_score = max(edge_by_score, key=lambda x: x[1])
-
-    for e, score in edge_by_score:
-        if score <= 0 or e in lastFlips or e in set_b:
-            continue
-        try:
-            flip_rev = normalize_edge(*a.get_flip_partner(e))
-            if e in a.possible_flips():
-                a.add_flip(e)
-                to_Flip.add(e)
-                setFlipsWithPartner.add((e, flip_rev))
-                new_active.add(flip_rev)
-        except ValueError:
-            pass
-
-    return to_Flip, setFlipsWithPartner, new_active
-
-
-# =========================================================
-# 7. הפונקציה הראשית
-# =========================================================
-
-def distance_super_optimized(T1, T2):
-    return distance_with_split(T1, T2, distance_optimized)
-
-
-# =========================================================
-# 8. blocking_edges – נשאר שלך
+# 5. Huristic
 # =========================================================
 
 def Huristic(
@@ -305,7 +285,7 @@ def Huristic(
     setChangedEdges: set[tuple[int, int]],
     lastFlips: set[tuple[int, int]],
     k: int
-) -> tuple[set, set, set]:  # מחזיר גם toRemove וגם toAdd
+) -> tuple[set, set, set, set]:
        
     edge_by_score = []
     to_Flip = set()
@@ -319,8 +299,9 @@ def Huristic(
             edge_by_score.append((e, score))
         except ValueError:
             continue
+    
     if not edge_by_score:
-      return set(), set(), set(), set()
+        return set(), set(), set(), set()
 
     best_edge, best_score = max(edge_by_score, key=lambda x: x[1])
 
@@ -333,12 +314,12 @@ def Huristic(
                     to_Flip.add(e)
                     toRemove.add(e)
                     toAdd.add(flip_rev)
-                    setFlipsWithPartner.add((e,flip_rev))
+                    setFlipsWithPartner.add((e, flip_rev))
                     edge_attempt_count[flip_rev] = 1 + edge_attempt_count[e]
         except ValueError:
             continue
                          
-    if best_score == 0 or len(setChangedEdges)> 100:
+    if best_score == 0 or len(setChangedEdges) > 100:
         candidates = [e for e in setChangedEdges if e not in set_b and e not in lastFlips]
         for e in candidates:
             if edge_attempt_count[e] == 0:
@@ -349,12 +330,18 @@ def Huristic(
                     to_Flip.add(e)
                     toRemove.add(e)
                     toAdd.add(flip_rev)
-                    setFlipsWithPartner.add((e,flip_rev))
+                    setFlipsWithPartner.add((e, flip_rev))
                     edge_attempt_count[flip_rev] = 1 + edge_attempt_count[e]
                 except:
                     pass
 
-    return to_Flip, toRemove, toAdd ,setFlipsWithPartner
+    return to_Flip, toRemove, toAdd, setFlipsWithPartner
+
+
+# =========================================================
+# 6. blocking_edges
+# =========================================================
+
 def blocking_edges(a: FlippableTriangulation, 
                    set_b: set[tuple[int, int]],
                    edges: set[tuple[int,int]], 
@@ -389,6 +376,7 @@ def blocking_edges(a: FlippableTriangulation,
     blocked_edges = set()
     visited = set(edges) | set_b  
     triangles = []
+    
     for edge in successful_flips:
         partner = edge_to_partner[edge]
         t1, t2 = new_triangles(a_temp, partner)
@@ -412,45 +400,122 @@ def blocking_edges(a: FlippableTriangulation,
                     blocked_edges.add(e_norm)
     
     score = len(free_edges)
+    
     for e in blocked_edges:
-        if e not in free_edges and e  not in set_b and e in a_temp.possible_flips():
+        if e not in free_edges and e not in set_b and e in a_temp.possible_flips():
             try:
                 a_dup = a_temp.fork()
                 a_dup.add_flip(e)
                 a_dup.commit()
-                t1, t2 = new_triangles(a,e)
+                t1, t2 = new_triangles(a, e)
                 for triangle in [t1, t2]:
                     for e1 in triangle: 
                        e_norm = normalize_edge(*e1)
                        if isFree(a_dup, set_b, e_norm):
                          free_edges.add(e_norm)
-
             except ValueError:
                 continue
+                
     if not free_edges:       
         for edge in blocked_edges:
             e_norm = normalize_edge(*edge)
             if e_norm in a_temp.possible_flips() and e_norm not in set_b:
                 free_edges.add(e_norm)
 
-
     if free_edges:
         recursive_score = blocking_edges(a_temp, set_b, free_edges, k - 1)
         score += recursive_score 
+        
     return score
+
+
+# =========================================================
+# 7. הפונקציה הראשית
+# =========================================================
+
+def distance_super_optimized(T1, T2):
+    """
+    גרסה משופרת שבודקת separator דינמית אחרי כל כמה שכבות
+    """
+    return distance_with_dynamic_split(T1, T2)
+
+
+# =========================================================
+# 8. distance רגיל (לשימוש ישיר)
+# =========================================================
+
+def distance(a: FlippableTriangulation,
+             b: FlippableTriangulation):
+    """
+    הגרסה המקורית שלך - ללא split
+    """
+    edge_attempt_count.clear()
+
+    k = 16
+    dist = 0
+    flips_by_layer = list()
+    flips_with_partner_by_layer = list()
+    lista = [normalize_edge(*e) for e in a.get_edges()]
+    listb = [normalize_edge(*e) for e in b.get_edges()]
+    lastFlips = set()
+
+    set_b = set(listb)
+    a_working = a.fork()
+    setChangedEdges = set(normalize_edge(*e) for e in diff(lista, listb))
+    
+    while not a_working.__eq__(b):
+        setFlips = set()
+        setFlipsWithPartner = set()
+        toRemove = set()
+        toAdd = set()
+        
+        for e in set(setChangedEdges):
+            try:
+                if isFree(a_working, set_b, e):
+                    flip_rev = normalize_edge(*a_working.get_flip_partner(e))
+                    a_working.add_flip(e)
+                    toRemove.add(e)
+                    setFlips.add(e)
+                    setFlipsWithPartner.add((e, flip_rev))
+                    edge_attempt_count[flip_rev] = 1 + edge_attempt_count[e]
+            except ValueError:
+                continue
+        
+        setFlips_h, toRemove_h, toAdd_h, flips_h = Huristic(
+            a_working, set_b, setChangedEdges, lastFlips, k
+        )
+        toRemove |= toRemove_h
+        toAdd |= toAdd_h
+        setFlips |= setFlips_h
+        setFlipsWithPartner |= flips_h
+        
+        lastFlips = setFlips.copy()
+
+        a_working.commit()
+        flips_by_layer.append(setFlips)
+        flips_with_partner_by_layer.append(setFlipsWithPartner)
+        dist += 1
+        
+        setChangedEdges = {
+            normalize_edge(*e)
+            for e in a_working.get_edges()
+            if normalize_edge(*e) not in set_b
+        }
+
+        if dist > 400:
+            break
+
+    return dist, flips_by_layer, flips_with_partner_by_layer
+
+
 # ===========================
 # דוגמה לשימוש
 # ===========================
 
 """
-# במקום:
-d, flips, partner = distance(T1, T2)
-
-# השתמשי ב:
+# עם split דינמי:
 d, flips, partner = distance_super_optimized(T1, T2)
 
-# זה יעשה:
-# 1. ינסה לחלק לשתי טריאנגולציות (אם יש הרבה צלעות משותפות)
-# 2. אם הצליח - ירוץ distance_optimized על כל חצי בנפרד
-# 3. אם לא הצליח - ירוץ distance_optimized רגיל
+# בלי split (המקורי שלך):
+d, flips, partner = distance(T1, T2)
 """

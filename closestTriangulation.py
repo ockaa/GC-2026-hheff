@@ -2,16 +2,21 @@ import os
 from pathlib import Path
 import matplotlib.pyplot as plt
 from distance import distance
+from try_distance import distance_super_optimized
+import math
+
+
 from itertools import combinations
 import random
 from cgshop2026_pyutils.io import read_instance
 from cgshop2026_pyutils.geometry import FlippableTriangulation, draw_edges, Point 
 from cgshop2026_pyutils.schemas import CGSHOP2026Instance
-from helpFuncs import reconstruct_triangulation_sequence
+from helpFuncs import reconstruct_triangulation_sequence,is_ending_right
 from c_builder import fromCompToFlips
 # ===========================
 # פונקציה לחישוב כל המרחקים
 # ===========================
+repeats = 5
 def caculate_all_dis(triangulations: list[FlippableTriangulation]) -> list[list[tuple[int,set,set]]]:
     n = len(triangulations)
     dist: list[list[tuple[int,set,set]]] = [[(0,set(),set()) for _ in range(n)] for _ in range(n)]  # <-- שונה
@@ -23,7 +28,7 @@ def caculate_all_dis(triangulations: list[FlippableTriangulation]) -> list[list[
             print(f"now calculate for t{i} and t{j}")
             min_d = max_num
             
-            for k in range(10):
+            for k in range(repeats):
                 nd = max_num
                 d = 200
                 p =0
@@ -39,13 +44,18 @@ def caculate_all_dis(triangulations: list[FlippableTriangulation]) -> list[list[
                         d2 , s2 = fromCompToFlips(triangulations[j],stageflips2)
                         if(d1 < d2):
                             d,s,l = d1,s1,l1
+                            print(f"a with stage flips is b :{is_ending_right(triangulations[i], triangulations[j],s)}")
+
                         else:
                             d,s,l = d2,s2,l2
+                            print(f"a with stage flips is b :{is_ending_right(triangulations[j], triangulations[i],s)}")
+
                         distance_result = d,s,l
                         if min_d > d :
                             min_d = d
                             min_distance_result = distance_result
                         print(f"  found length : {d}")
+                        _,s_min,_ = min_distance_result
                     p+=1
                     if p > 30 and min_d < 23:
                         print("  * took to long skip")
@@ -114,7 +124,7 @@ def closestTringulation(triangulations: list[FlippableTriangulation], imposter: 
 
 def closest_to_target(triangulations: list[FlippableTriangulation],
                       target: FlippableTriangulation,
-                      repeats: int = 5):
+                      repeats: int = repeats):
     """
     מחזירה את הטריאנגולציה הכי קרובה ל-target
     """
@@ -162,12 +172,29 @@ def closest_to_target(triangulations: list[FlippableTriangulation],
 
 
 
-def closest_point_between(A, B, target):
+def closest_point_between(A, B, target, max_candidates=30):
     d, flips, _ = distance(A, B)
     path = reconstruct_triangulation_sequence(A, flips)
-    _, best_T, _ ,_= closest_to_target(path, target)
-    return best_T
 
+    if len(path) == 0:
+        return A
+
+    # אם המסלול קצר – בודקים את כולו
+    if len(path) <= max_candidates:
+        _, best_T, _, _ = closest_to_target(path, target)
+        return best_T
+
+    # אחרת – מדללים כך שיהיו לכל היותר max_candidates
+    step = math.ceil(len(path) / max_candidates)
+
+    reduced_path = path[::step]
+
+    # ביטחון: שלא יצא ריק
+    if len(reduced_path) == 0:
+        reduced_path = [path[0]]
+
+    _, best_T, _, _ = closest_to_target(reduced_path, target)
+    return best_T
 
 def median_triangulation(triangulations):
     # שלב 0: מתחילים משתי הטריאנגולציות הראשונות
@@ -180,7 +207,7 @@ def median_triangulation(triangulations):
 
     # עכשיו עוברים על שאר הטריאנגולציות
     for i in range(2, len(triangulations)):
-        print(f"Adding new trag : T{i}")
+        print(f"Adding new trag : T{i} out of {len(triangulations)-1}")
         T = triangulations[i]
 
         # 1) בטווח בין M לבין N (העוגן הקודם) —
