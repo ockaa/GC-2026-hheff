@@ -8,13 +8,13 @@ from cgshop2026_pyutils.io import read_instance
 from cgshop2026_pyutils.geometry import FlippableTriangulation, Point 
 from try_distance import distance_super_optimized
 from distance import distance
-from distance_bad import ultra_simple_distance
+from distance_bad import ultra_simple_distance,find_distance_bad
 from closestTriangulation import closestTringulation , median_triangulation,dynamic_median_triangulation
 from helpFuncs import reverse_flip_stages, get_formatted_path
 from Components import check_if_flips_is_b
-from c_builder import fromCompToFlips
+from Components import fromCompToFlips
 INSTANCE_FOLDER = "benchmark_instances"
-INSTANCE_FILENAME = "rirs-2500-20-70c6d643.json" 
+INSTANCE_FILENAME = "random_instance_110_15_3.json" 
 DISTANCE_RETRIES = 1 # Reduced retries since we rely on optimization now
 
 def main():
@@ -49,35 +49,7 @@ def main():
         last_valid = None
         better = 0
         for k in range(repeats):    
-            if better == 0:
-              nd1,stageflips1,l1 = ultra_simple_distance(target_triang, final_center)
-              nd2,stageflips2,l2 = ultra_simple_distance(final_center,target_triang)
-            
-              d1 , path_t_to_c = fromCompToFlips(target_triang,stageflips1)
-              d2 , path_c_to_t = fromCompToFlips(final_center,stageflips2)
-              is_valid = check_if_flips_is_b(final_center,target_triang, path_c_to_t)
-    
-              if(d2 < d1 and is_valid):
-                path_t_to_c = reverse_flip_stages(path_c_to_t, final_center, target_triang)
-                d = d2
-                l = l2
-                better = 2
-              else:
-                d = d1
-                l = l1
-                better = 1
-            else:
-                if better == 1:
-                    _,stageflips1,l = ultra_simple_distance(target_triang, final_center)
-                    d , path_t_to_c = fromCompToFlips(target_triang,stageflips1)
-                else:
-                    _,stageflips2,l = ultra_simple_distance(final_center,target_triang)
-                    d , path_c_to_t = fromCompToFlips(final_center,stageflips2)
-                    is_valid = check_if_flips_is_b(final_center,target_triang, path_c_to_t)
-                    if(is_valid):
-                        path_t_to_c = reverse_flip_stages(path_c_to_t, final_center, target_triang)
-
-
+            d , path_t_to_c ,l, better = find_distance_bad(target_triang, final_center, better)
             distance_result = d,path_t_to_c,l
             print(f"  t{i} and center distance : {d}")
             if min_d > d :
@@ -88,7 +60,7 @@ def main():
                     print(f"   new min is good and is : {min_d}")
                     last_valid = min_distance_result
                     last_min = min_d
-                    break 
+                    break #we give him 5 trys to find correct solution when first find we break the loop
                 else:
                     print(f"   FAILED verification! return to last min {last_min}")
                     min_distance_result = last_valid
@@ -112,6 +84,7 @@ def main():
         else:
             print(f"Target {i}: FAILED verification!")
             all_valid = False
+            break # no need to finish it if one is worng 
 
         
         # C. Format for JSON

@@ -11,7 +11,7 @@ from distance import distance
 from closestTriangulation import closestTringulation , median_triangulation,dynamic_median_triangulation
 from helpFuncs import reverse_flip_stages, get_formatted_path
 from Components import check_if_flips_is_b
-from c_builder import fromCompToFlips
+from Components import fromCompToFlips
 INSTANCE_FOLDER = "benchmark_instances"
 INSTANCE_FILENAME = "woc-230-tsplib-5d6e5c1d.json" 
 DISTANCE_RETRIES = 1 # Reduced retries since we rely on optimization now

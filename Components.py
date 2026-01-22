@@ -725,3 +725,51 @@ def optimize_best_triangulation(triangs_stages_flips: list[list[list[tuple[int,i
             last_improvement_iteration += 1
             
     return current_center, current_stages_list
+
+
+
+
+def fromCompToFlips(a: FlippableTriangulation,stages_of_flips):
+            a_clone2 = a.fork()
+            stages_of_flips_comp = list(list())
+            manager = MakeComponents(a, stages_of_flips)
+            
+            # 1. Gather all layers from all components into a single 'Global' list of layers
+            # global_layers[0] will hold Layer 0 from Comp A, Layer 0 from Comp B, etc.
+            global_layers = []
+
+            for comp in manager.get_all_components():
+                comp_layers = comp.get_layers_topological()
+                
+                for depth, layer in enumerate(comp_layers):
+                    # Ensure the global list is deep enough
+                    while len(global_layers) <= depth:
+                        global_layers.append([])
+                    
+                    # Merge this component's layer into the global layer at the same depth
+                    global_layers[depth].extend(layer)
+
+            # 2. Execute the Global Layers sequentially
+           # print(f"  new dist after comp: {len(global_layers)}")
+            dist_comp = len(global_layers)
+            for i, layer in enumerate(global_layers):
+                # print(f"Processing Global Layer {i} with {len(layer)} flips...")
+                stages_of_flips_comp.append(list())
+                
+                for node_id in layer:
+                    # node_id is (Edge_Before, Edge_After, ID)
+                    edge_to_flip = node_id[0]
+                    
+                    try:
+                        a_clone2.add_flip(edge_to_flip)
+                        # FIX: Use 'i' (the index) instead of 'layer' (the list object)
+                        stages_of_flips_comp[i].append(edge_to_flip) 
+                    except ValueError:
+                        # This catches edges that might conflict within the same batch
+                        # (Though topological sort usually prevents this for dependencies)
+                        pass
+                
+                # Commit AFTER processing the full layer (All components advance together)
+                a_clone2.commit()
+
+            return dist_comp , stages_of_flips_comp

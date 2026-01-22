@@ -9,9 +9,9 @@ from try_distance import distance_super_optimized
 from closestTriangulation import closestTringulation , median_triangulation,dynamic_median_triangulation
 from helpFuncs import reverse_flip_stages, get_formatted_path
 from Components import check_if_flips_is_b
-from c_builder import fromCompToFlips
+from Components import fromCompToFlips
 INSTANCE_FOLDER = "benchmark_instances"
-INSTANCE_FILENAME = "woc-165-tsplib-ddfc0df0.json" 
+INSTANCE_FILENAME = "random_instance_479_320_20.json" 
 DISTANCE_RETRIES = 1 # Reduced retries since we rely on optimization now
 
 def main():

@@ -10,7 +10,7 @@ from closestTriagWithPoints import median_triangulation_2
 from closestTriangulation import closestTringulation , median_triangulation,dynamic_median_triangulation
 from helpFuncs import reverse_flip_stages, get_formatted_path
 from Components import check_if_flips_is_b
-from c_builder import fromCompToFlips
+from Components import fromCompToFlips
 INSTANCE_FOLDER = "benchmark_instances"
 INSTANCE_FILENAME = "random_instance_110_15_3.json" 
 DISTANCE_RETRIES = 1 # Reduced retries since we rely on optimization now

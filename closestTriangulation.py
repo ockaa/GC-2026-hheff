@@ -12,7 +12,7 @@ from cgshop2026_pyutils.io import read_instance
 from cgshop2026_pyutils.geometry import FlippableTriangulation, draw_edges, Point 
 from cgshop2026_pyutils.schemas import CGSHOP2026Instance
 from helpFuncs import reconstruct_triangulation_sequence,is_ending_right
-from c_builder import fromCompToFlips
+from Components import fromCompToFlips
 # ===========================
 # פונקציה לחישוב כל המרחקים
 # ===========================

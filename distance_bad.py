@@ -3,17 +3,19 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import random
 from collections import defaultdict
-
+from helpFuncs import reverse_flip_stages, get_formatted_path
+from Components import check_if_flips_is_b
 from cgshop2026_pyutils.io import read_instance
 from cgshop2026_pyutils.geometry import FlippableTriangulation, draw_edges, Point 
 from cgshop2026_pyutils.schemas import CGSHOP2026Instance
 from helpFuncs import normalize_edge, new_triangles, diff, isFree, maximal_independent_subsets
+from Components import fromCompToFlips
 
 edge_attempt_count = defaultdict(int)
 
 def ultra_simple_distance(a: FlippableTriangulation,
                          b: FlippableTriangulation,
-                         max_iterations=25000,
+                         max_iterations=50000,
                          verbose=False):
     edge_attempt_count.clear()
 
@@ -277,3 +279,51 @@ def blocking_edges_fast(a: FlippableTriangulation,
                     free_edges.add(e_norm)
     
     return len(free_edges)
+
+
+def find_distance_bad(target_triang: FlippableTriangulation,
+                  final_center: FlippableTriangulation,
+                  better:int
+                  ):
+    #even that now we dont run muliple times if we did the idea it forst to see what is shorter a->b or b->a and then also do the shorte way
+    # i guess now we cauculte twice awlays at start i put simple one direction at end
+    if better == 0:
+              nd1,stageflips1,l1 = ultra_simple_distance(target_triang, final_center)
+              nd2,stageflips2,l2 = ultra_simple_distance(final_center,target_triang) 
+            
+              d1 , path_t_to_c = fromCompToFlips(target_triang,stageflips1)
+              d2 , path_c_to_t = fromCompToFlips(final_center,stageflips2)
+              is_valid = check_if_flips_is_b(final_center,target_triang, path_c_to_t)
+    
+              if(d2 < d1 and is_valid):
+                path_t_to_c = reverse_flip_stages(path_c_to_t, final_center, target_triang)
+                d = d2
+                l = l2
+                better = 2
+              else:
+                d = d1
+                l = l1
+                better = 1
+    else:
+        if better == 1:
+            _,stageflips1,l = ultra_simple_distance(target_triang, final_center)
+            d , path_t_to_c = fromCompToFlips(target_triang,stageflips1)
+        else:
+            _,stageflips2,l = ultra_simple_distance(final_center,target_triang)
+            d , path_c_to_t = fromCompToFlips(final_center,stageflips2)
+            is_valid = check_if_flips_is_b(final_center,target_triang, path_c_to_t)
+            if(is_valid):
+                path_t_to_c = reverse_flip_stages(path_c_to_t, final_center, target_triang)
+    return d , path_t_to_c ,l, better
+
+
+#if you want not to do two dirrection 
+def find_distance_bad_oneway(target_triang: FlippableTriangulation,
+                  final_center: FlippableTriangulation,
+                  better:int
+                  ):
+ 
+    nd,stageflips1,l = ultra_simple_distance(target_triang, final_center)            
+    d , path_t_to_c = fromCompToFlips(target_triang,stageflips1)
+    
+    return d , path_t_to_c ,l, better
